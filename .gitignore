@@ -6,6 +6,7 @@
 alloc_bench
 io_bench
 victim
+pthread_mutex_cond_test
 *.so
 *.dylib
 *.log

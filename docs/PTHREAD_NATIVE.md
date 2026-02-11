@@ -1,16 +1,16 @@
 # Native threading (clone3 / futex)
 
-When the `pthread-native` feature is enabled, IronLung implements `pthread_create` and `pthread_join` using Linux syscalls only (no delegation to libc). Mutex and condition variables remain delegated to system libc via dlsym.
+When the `pthread-native` feature is enabled, IronLung implements `pthread_create`, `pthread_join`, `pthread_mutex_*`, and `pthread_cond_*` using Linux syscalls and atomics only (no delegation to libc).
 
 ## Goal
 
-Allow multithreaded applications to create and join threads without depending on glibc’s pthread implementation. This “cuts the umbilical” for thread creation so that LD_PRELOAD of IronLung does not require glibc for basic threading.
+Allow multithreaded applications to run without depending on glibc’s pthread implementation. Thread creation and synchronization use clone3 and futex only, so LD_PRELOAD of IronLung does not require glibc for threading.
 
 ## ABI
 
 - **pthread_t:** We use the kernel TID (thread ID) as the value stored in `pthread_t`. Layout is compatible with a single word (pointer or integer); application code that only passes pthread_t to pthread_join is fine.
 - **pthread_create / pthread_join:** Implemented in-tree when `pthread-native` is enabled. No new exported symbols; same ABI as the delegate path.
-- **pthread_mutex_* / pthread_cond_*:** Still delegated to libc. A future phase could implement these with futex for full independence.
+- **pthread_mutex_* / pthread_cond_*:** With `pthread-native`, also implemented in-tree via futex; first 4 bytes of `pthread_mutex_t` / `pthread_cond_t` hold the futex word (layout and size unchanged).
 
 ## Design
 
@@ -28,14 +28,26 @@ Allow multithreaded applications to create and join threads without depending on
 2. Loop: if already 0, collect return value (if any) and return 0. Otherwise `futex_wait` on that address until woken (or timeout).
 3. Clean up stack and any bookkeeping.
 
-### Mutex / cond
+### Mutex
 
-Not implemented natively in this phase. They remain resolved via `cache::resolve("pthread_mutex_lock", …)` etc., so application code that uses mutex/cond still goes through libc for those calls.
+- **State:** First 4 bytes of `pthread_mutex_t`: 0 = unlocked, 1 = locked.
+- **init/destroy:** Zero the futex word; `attr` ignored (normal mutex only).
+- **lock:** Compare-exchange 0→1; on failure, futex_wait then retry.
+- **unlock:** Store 0, futex_wake(1).
+- Only normal (non-recursive) mutex is supported in the native path.
+
+### Cond
+
+- **State:** First 4 bytes of `pthread_cond_t`: generation counter.
+- **init/destroy:** Zero the counter; `attr` ignored.
+- **wait:** Read counter, unlock mutex, futex_wait(cond, counter), re-lock mutex.
+- **signal:** Increment counter, futex_wake(1).
+- `pthread_cond_broadcast` is not in the baseline; not implemented natively in this phase.
 
 ## Feature flag
 
 - **Default:** Off. Threading delegates to libc.
-- **`pthread-native`:** On Linux, use clone3 + futex for create/join; mutex/cond still delegated.
+- **`pthread-native`:** On Linux x86_64, create/join/mutex/cond via clone3+futex (no libc).
 
 ## Constraints
 

@@ -73,42 +73,62 @@ pub unsafe extern "C" fn pthread_mutex_init(
     mutex: *mut libc::pthread_mutex_t,
     attr: *const libc::pthread_mutexattr_t,
 ) -> libc::c_int {
-    let f = cache::resolve(b"pthread_mutex_init\0", &PTHREAD_MUTEX_INIT);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_mutex_init_native(mutex, attr);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_mutex_init\0", &PTHREAD_MUTEX_INIT);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadMutexInit = core::mem::transmute(f);
+        f(mutex, attr)
     }
-    let f: PthreadMutexInit = core::mem::transmute(f);
-    f(mutex, attr)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn pthread_mutex_lock(mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
-    let f = cache::resolve(b"pthread_mutex_lock\0", &PTHREAD_MUTEX_LOCK);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_mutex_lock_native(mutex);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_mutex_lock\0", &PTHREAD_MUTEX_LOCK);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadMutexLock = core::mem::transmute(f);
+        f(mutex)
     }
-    let f: PthreadMutexLock = core::mem::transmute(f);
-    f(mutex)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn pthread_mutex_unlock(mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
-    let f = cache::resolve(b"pthread_mutex_unlock\0", &PTHREAD_MUTEX_UNLOCK);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_mutex_unlock_native(mutex);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_mutex_unlock\0", &PTHREAD_MUTEX_UNLOCK);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadMutexUnlock = core::mem::transmute(f);
+        f(mutex)
     }
-    let f: PthreadMutexUnlock = core::mem::transmute(f);
-    f(mutex)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn pthread_mutex_destroy(mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
-    let f = cache::resolve(b"pthread_mutex_destroy\0", &PTHREAD_MUTEX_DESTROY);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_mutex_destroy_native(mutex);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_mutex_destroy\0", &PTHREAD_MUTEX_DESTROY);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadMutexDestroy = core::mem::transmute(f);
+        f(mutex)
     }
-    let f: PthreadMutexDestroy = core::mem::transmute(f);
-    f(mutex)
 }
 
 #[no_mangle]
@@ -116,12 +136,17 @@ pub unsafe extern "C" fn pthread_cond_init(
     cond: *mut libc::pthread_cond_t,
     attr: *const libc::pthread_condattr_t,
 ) -> libc::c_int {
-    let f = cache::resolve(b"pthread_cond_init\0", &PTHREAD_COND_INIT);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_cond_init_native(cond, attr);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_cond_init\0", &PTHREAD_COND_INIT);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadCondInit = core::mem::transmute(f);
+        f(cond, attr)
     }
-    let f: PthreadCondInit = core::mem::transmute(f);
-    f(cond, attr)
 }
 
 #[no_mangle]
@@ -129,30 +154,45 @@ pub unsafe extern "C" fn pthread_cond_wait(
     cond: *mut libc::pthread_cond_t,
     mutex: *mut libc::pthread_mutex_t,
 ) -> libc::c_int {
-    let f = cache::resolve(b"pthread_cond_wait\0", &PTHREAD_COND_WAIT);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_cond_wait_native(cond, mutex);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_cond_wait\0", &PTHREAD_COND_WAIT);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadCondWait = core::mem::transmute(f);
+        f(cond, mutex)
     }
-    let f: PthreadCondWait = core::mem::transmute(f);
-    f(cond, mutex)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn pthread_cond_signal(cond: *mut libc::pthread_cond_t) -> libc::c_int {
-    let f = cache::resolve(b"pthread_cond_signal\0", &PTHREAD_COND_SIGNAL);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_cond_signal_native(cond);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_cond_signal\0", &PTHREAD_COND_SIGNAL);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadCondSignal = core::mem::transmute(f);
+        f(cond)
     }
-    let f: PthreadCondSignal = core::mem::transmute(f);
-    f(cond)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn pthread_cond_destroy(cond: *mut libc::pthread_cond_t) -> libc::c_int {
-    let f = cache::resolve(b"pthread_cond_destroy\0", &PTHREAD_COND_DESTROY);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_cond_destroy_native(cond);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_cond_destroy\0", &PTHREAD_COND_DESTROY);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadCondDestroy = core::mem::transmute(f);
+        f(cond)
     }
-    let f: PthreadCondDestroy = core::mem::transmute(f);
-    f(cond)
 }

@@ -1,5 +1,5 @@
-//! Native pthread_create / pthread_join via clone3 and futex (Linux).
-//! Used when the `pthread-native` feature is enabled. Mutex/cond remain delegated.
+//! Native pthread_create / pthread_join and pthread_mutex_* / pthread_cond_* via clone3 and futex (Linux).
+//! Used when the `pthread-native` feature is enabled. No libc for threading.
 
 use core::ffi::c_void;
 use core::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
@@ -53,6 +53,8 @@ struct Ctrl {
     stack: *mut u8,
     stack_size: usize,
 }
+// Safe: Ctrl is only accessed under THREAD_TABLE lock; stack is not shared across threads.
+unsafe impl Send for Ctrl {}
 
 static THREAD_TABLE: spin::Mutex<[Option<Ctrl>; MAX_THREADS]> = spin::Mutex::new([const { None }; MAX_THREADS]);
 
@@ -110,8 +112,6 @@ unsafe fn mmap_stack(size: usize) -> *mut u8 {
     ret as *mut u8
 }
 
-const SYS_munmap: usize = 11;
-
 unsafe fn munmap_stack(ptr: *mut u8, size: usize) {
     if ptr.is_null() {
         return;
@@ -143,13 +143,162 @@ unsafe fn futex_wake(addr: *const u32, count: u32) {
     );
 }
 
+/// First 4 bytes of pthread_mutex_t / pthread_cond_t are our futex word (layout-compatible with libc size).
+fn mutex_state(mutex: *mut libc::pthread_mutex_t) -> *mut AtomicU32 {
+    mutex.cast()
+}
+fn cond_state(cond: *mut libc::pthread_cond_t) -> *mut AtomicU32 {
+    cond.cast()
+}
+
+// --- Native mutex (normal only; attr ignored) ---
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn pthread_mutex_init_native(
+    mutex: *mut libc::pthread_mutex_t,
+    _attr: *const libc::pthread_mutexattr_t,
+) -> libc::c_int {
+    if mutex.is_null() {
+        return libc::EINVAL;
+    }
+    (*mutex_state(mutex)).store(0, Ordering::Release);
+    0
+}
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn pthread_mutex_lock_native(mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
+    if mutex.is_null() {
+        return libc::EINVAL;
+    }
+    let s = mutex_state(mutex);
+    loop {
+        if (*s).compare_exchange_weak(0, 1, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+            return 0;
+        }
+        futex_wait(s as *const u32, 1);
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn pthread_mutex_unlock_native(mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
+    if mutex.is_null() {
+        return libc::EINVAL;
+    }
+    let s = mutex_state(mutex);
+    (*s).store(0, Ordering::Release);
+    futex_wake(s as *const u32, 1);
+    0
+}
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn pthread_mutex_destroy_native(mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
+    if mutex.is_null() {
+        return libc::EINVAL;
+    }
+    (*mutex_state(mutex)).store(0, Ordering::Release);
+    0
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn pthread_mutex_init_native(
+    _mutex: *mut libc::pthread_mutex_t,
+    _attr: *const libc::pthread_mutexattr_t,
+) -> libc::c_int {
+    libc::ENOSYS
+}
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn pthread_mutex_lock_native(_mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
+    libc::ENOSYS
+}
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn pthread_mutex_unlock_native(_mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
+    libc::ENOSYS
+}
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn pthread_mutex_destroy_native(_mutex: *mut libc::pthread_mutex_t) -> libc::c_int {
+    libc::ENOSYS
+}
+
+// --- Native cond (attr ignored) ---
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn pthread_cond_init_native(
+    cond: *mut libc::pthread_cond_t,
+    _attr: *const libc::pthread_condattr_t,
+) -> libc::c_int {
+    if cond.is_null() {
+        return libc::EINVAL;
+    }
+    (*cond_state(cond)).store(0, Ordering::Release);
+    0
+}
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn pthread_cond_wait_native(
+    cond: *mut libc::pthread_cond_t,
+    mutex: *mut libc::pthread_mutex_t,
+) -> libc::c_int {
+    if cond.is_null() || mutex.is_null() {
+        return libc::EINVAL;
+    }
+    let c = cond_state(cond);
+    let gen = (*c).load(Ordering::Acquire);
+    pthread_mutex_unlock_native(mutex);
+    futex_wait(c as *const u32, gen);
+    pthread_mutex_lock_native(mutex);
+    0
+}
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn pthread_cond_signal_native(cond: *mut libc::pthread_cond_t) -> libc::c_int {
+    if cond.is_null() {
+        return libc::EINVAL;
+    }
+    let c = cond_state(cond);
+    (*c).fetch_add(1, Ordering::Release);
+    futex_wake(c as *const u32, 1);
+    0
+}
+
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn pthread_cond_destroy_native(cond: *mut libc::pthread_cond_t) -> libc::c_int {
+    if cond.is_null() {
+        return libc::EINVAL;
+    }
+    (*cond_state(cond)).store(0, Ordering::Release);
+    0
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn pthread_cond_init_native(
+    _cond: *mut libc::pthread_cond_t,
+    _attr: *const libc::pthread_condattr_t,
+) -> libc::c_int {
+    libc::ENOSYS
+}
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn pthread_cond_wait_native(
+    _cond: *mut libc::pthread_cond_t,
+    _mutex: *mut libc::pthread_mutex_t,
+) -> libc::c_int {
+    libc::ENOSYS
+}
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn pthread_cond_signal_native(_cond: *mut libc::pthread_cond_t) -> libc::c_int {
+    libc::ENOSYS
+}
+#[cfg(not(target_arch = "x86_64"))]
+pub unsafe fn pthread_cond_destroy_native(_cond: *mut libc::pthread_cond_t) -> libc::c_int {
+    libc::ENOSYS
+}
+
 /// Child trampoline: run start_routine(arg), store result, mark done, wake joiner, then sleep forever.
 unsafe fn trampoline(
     ctrl: *mut Ctrl,
     start_routine: Option<extern "C" fn(*mut c_void) -> *mut c_void>,
     arg: *mut c_void,
 ) {
-    let ret = start_routine.map(|f| f(arg)).flatten().unwrap_or(core::ptr::null_mut());
+    let ret = start_routine.map(|f| f(arg)).unwrap_or(core::ptr::null_mut());
     (*ctrl).retval.store(ret, Ordering::Release);
     (*ctrl).status.store(0, Ordering::Release);
     futex_wake(&(*ctrl).status as *const AtomicU32 as *const u32, 1);
