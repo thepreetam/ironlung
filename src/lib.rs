@@ -10,6 +10,8 @@ mod cache;
 mod errno;
 #[cfg(target_os = "linux")]
 mod pthread;
+#[cfg(all(target_os = "linux", feature = "pthread-native"))]
+mod pthread_native;
 #[cfg(target_os = "linux")]
 mod stdio;
 #[cfg(target_os = "linux")]

@@ -21,7 +21,7 @@ Validate inputs/sizes, then call the real implementation via `dlsym(RTLD_NEXT, .
 | Function | Notes |
 |----------|--------|
 | `fopen`, `fclose`, `fread`, `fwrite`, `fgets` | Size caps; null checks |
-| `pthread_*` | Full delegation (mutex, cond, create, join) |
+| `pthread_*` | With feature `pthread-native` (Linux x86_64): create/join via clone3+futex; mutex/cond still delegated. Otherwise full delegation. |
 | `open`, `close`, `fork`, `execve` | Delegate after validation |
 | `socket`, `bind`, `listen`, `accept`, `connect` | Delegate |
 | `iconv_open`, `iconv`, `iconv_close` | Delegate |

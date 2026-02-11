@@ -13,6 +13,7 @@ alloc-cache = []
 stdio-kernel = []           # kernel-delegating vprintf (no-op on non-Linux)
 stdio-kernel-fread-fwrite = []  # fread/fwrite via fileno + read/write (no-op on non-Linux)
 stdio-libc = []             # force delegate printf/fread/fwrite to libc (disables kernel path when set)
+pthread-native = []         # Linux: pthread_create/join via clone3+futex (no libc); mutex/cond still delegated
 
 [lib]
 crate-type = ["cdylib", "rlib"]

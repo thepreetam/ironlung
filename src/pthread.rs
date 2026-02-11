@@ -40,22 +40,32 @@ pub unsafe extern "C" fn pthread_create(
     start_routine: Option<extern "C" fn(*mut c_void) -> *mut c_void>,
     arg: *mut c_void,
 ) -> libc::c_int {
-    let f = cache::resolve(b"pthread_create\0", &PTHREAD_CREATE);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_create_native(thread, attr, start_routine, arg);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_create\0", &PTHREAD_CREATE);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadCreate = core::mem::transmute(f);
+        f(thread, attr, start_routine, arg)
     }
-    let f: PthreadCreate = core::mem::transmute(f);
-    f(thread, attr, start_routine, arg)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn pthread_join(thread: libc::pthread_t, retval: *mut *mut c_void) -> libc::c_int {
-    let f = cache::resolve(b"pthread_join\0", &PTHREAD_JOIN);
-    if f.is_null() {
-        return libc::ENOSYS;
+    #[cfg(all(feature = "pthread-native", target_arch = "x86_64"))]
+    return crate::pthread_native::pthread_join_native(thread, retval);
+    #[cfg(not(all(feature = "pthread-native", target_arch = "x86_64")))]
+    {
+        let f = cache::resolve(b"pthread_join\0", &PTHREAD_JOIN);
+        if f.is_null() {
+            return libc::ENOSYS;
+        }
+        let f: PthreadJoin = core::mem::transmute(f);
+        f(thread, retval)
     }
-    let f: PthreadJoin = core::mem::transmute(f);
-    f(thread, retval)
 }
 
 #[no_mangle]

@@ -56,6 +56,7 @@ LD_PRELOAD=./target/release/libironlung.so IRONLUNG_SANDBOX_PATH=./target/releas
 | `stdio-kernel` | Kernel-delegating `vprintf` (subset of specifiers, writes via `write(1, …)`); see [docs/STDIO_KERNEL.md](docs/STDIO_KERNEL.md). **Default on.** |
 | `stdio-kernel-fread-fwrite` | `fread`/`fwrite` use `fileno(stream)` + `read`/`write` syscalls (Linux). **Default on.** |
 | `stdio-libc` | Force printf/fread/fwrite to delegate to libc (turns off kernel path when set). |
+| `pthread-native` | Linux x86_64: pthread_create/join via clone3+futex (no libc); mutex/cond still delegated. See [PTHREAD_NATIVE.md](docs/PTHREAD_NATIVE.md). |
 
 Default build enables the kernel stdio path on Linux; CI builds with `sandbox` plus defaults.
 
@@ -87,7 +88,7 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 - **getenv** — name length limit, delegate to libc. See [docs/SUBSET.md](docs/SUBSET.md).
 
 ### Phase 1: Concurrency
-- **pthread_*** — delegates to system libc via dlsym(RTLD_NEXT)
+- **pthread_*** — with feature `pthread-native`: create/join via clone3+futex (no libc); mutex/cond still delegated. Otherwise delegates to libc. See [docs/PTHREAD_NATIVE.md](docs/PTHREAD_NATIVE.md).
 - Allocator documentation and benchmarks (`docs/ALLOCATOR.md`, `tests/alloc_bench.c`)
 - Async-signal-safety audit (`docs/SIGNAL_SAFETY.md`)
 
