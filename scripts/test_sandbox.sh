@@ -44,12 +44,16 @@ EOF
     echo "FAIL: gcc failed to compile test program"
     exit 1
 fi
-out=$(LD_PRELOAD="$SO" IRONLUNG_SANDBOX_PATH="$SANDBOX" /tmp/ga_test 2>&1) || true
+if command -v timeout >/dev/null 2>&1; then
+    out=$(timeout 10 env LD_PRELOAD="$SO" IRONLUNG_SANDBOX_PATH="$SANDBOX" /tmp/ga_test 2>&1) || true
+else
+    out=$(env LD_PRELOAD="$SO" IRONLUNG_SANDBOX_PATH="$SANDBOX" /tmp/ga_test 2>&1) || true
+fi
 
 if echo "$out" | grep -q "getaddrinfo OK"; then
     echo "PASS: getaddrinfo returned successfully"
 else
-    echo "FAIL: $out"
+    echo "FAIL: ${out:-"(timed out or no output)"}"
     exit 1
 fi
 
