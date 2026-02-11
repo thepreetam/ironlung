@@ -3,10 +3,11 @@
 # Quick smoke test: does the app start with LD_PRELOAD?
 
 set -e
-SO="$(cd "$(dirname "$0")/.." && pwd)/target/release/libironlung.so"
+ROOT="${WORKSPACE:-$(cd "$(dirname "$0")/.." && pwd)}"
+SO="$ROOT/target/release/libironlung.so"
 
 if [ ! -f "$SO" ]; then
-    echo "Build IronLung first: cargo build --release" >&2
+    echo "Build IronLung first: cargo build --release (checked $SO)" >&2
     exit 1
 fi
 

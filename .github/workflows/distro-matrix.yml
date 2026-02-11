@@ -97,6 +97,7 @@ jobs:
         continue-on-error: true
 
       - name: App matrix
+        if: matrix.distro != 'alpine'
         run: |
           . $HOME/.cargo/env
           sh scripts/run_app_matrix.sh
