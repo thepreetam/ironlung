@@ -34,7 +34,7 @@ This document describes a **design** for optional allocator hardening: quarantin
 
 ## Implementation status
 
-**Quarantine** is implemented when the feature `alloc-quarantine` is enabled (e.g. `cargo build --release --features alloc-quarantine`). Behaviour: FIFO queue, cap by count (256 entries) and total bytes (512 KiB); `free` pushes into quarantine (draining oldest when over cap); `malloc` on OOM drains from quarantine and retries. No ABI or API changes; quarantine is internal to the allocator. See [ALLOCATOR.md](ALLOCATOR.md) for the concrete flow.
+**Quarantine** is implemented when the feature `alloc-quarantine` is enabled (**default on** in v1.0; disable with `default-features = false` and omit `alloc-quarantine`). Behaviour: FIFO queue, cap by count (256 entries) and total bytes (512 KiB); `free` pushes into quarantine (draining oldest when over cap); `malloc` on OOM drains from quarantine and retries. No ABI or API changes; quarantine is internal to the allocator. See [ALLOCATOR.md](ALLOCATOR.md) for the concrete flow.
 
 Shadow memory is **not** implemented; it remains optional future work.
 
