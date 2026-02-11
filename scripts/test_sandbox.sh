@@ -19,7 +19,7 @@ cargo build --release -p ironlung-sandbox 2>/dev/null || {
 SANDBOX=$(pwd)/target/release/ironlung-sandbox
 SO=$(pwd)/target/release/libironlung.so
 
-if [[ ! -x "$SANDBOX" ]]; then
+if [ ! -x "$SANDBOX" ]; then
     echo "ironlung-sandbox not found at $SANDBOX"
     exit 1
 fi
