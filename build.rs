@@ -46,6 +46,28 @@ fn main() {
             "cargo:rustc-link-arg=-Wl,--version-script={}",
             version_script_abs.display()
         );
+
+        // GLIBC version aliases so binaries built against older glibc can bind to our .so (LD_PRELOAD).
+        // See docs/CI_ABI.md. Generated from symbols.baseline.
+        let baseline_path = std::path::Path::new(&manifest_dir).join("crates/ironlung-abi-check/symbols.baseline");
+        let baseline_content = std::fs::read_to_string(&baseline_path).unwrap_or_default();
+        let glibc_symbols: Vec<&str> = baseline_content
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        let glibc_ver = std::path::Path::new(&out_dir).join("glibc_aliases.ver");
+        let glibc_body = glibc_symbols.iter().map(|s| format!("  {};", s)).collect::<Vec<_>>().join("\n");
+        std::fs::write(
+            &glibc_ver,
+            format!("GLIBC_2.2.5 {{\n global:\n{};\n}};\n", glibc_body),
+        )
+        .expect("write glibc_aliases.ver");
+        let glibc_ver_abs = std::fs::canonicalize(&glibc_ver).expect("canonicalize glibc_aliases.ver");
+        println!(
+            "cargo:rustc-link-arg=-Wl,--version-script={}",
+            glibc_ver_abs.display()
+        );
     }
 
     if std::env::var_os("CARGO_FEATURE_ALLOC_CACHE").is_some() {

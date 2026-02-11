@@ -21,6 +21,10 @@ Export is achieved by:
 
 All of the above are done in [build.rs](../build.rs) when `target_os = "linux"`.
 
+## GLIBC version aliases (Phase 8)
+
+To improve compatibility with binaries built against older glibc (e.g. when using LD_PRELOAD), the build also applies a second version script `glibc_aliases.ver` that assigns the version **GLIBC_2.2.5** to every symbol in [symbols.baseline](../crates/ironlung-abi-check/symbols.baseline). That script is generated in `OUT_DIR` from the baseline so the same set of symbols is exported both unversioned and as `sym@GLIBC_2.2.5` / `sym@@GLIBC_2.2.5`. The ABI checker already treats versioned names (any `sym@...`) as matching the baseline name `sym`; no change to the checker was required.
+
 ## Do Not Remove
 
 To avoid CI regressions ("missing symbols: fprintf, printf, vprintf"):
