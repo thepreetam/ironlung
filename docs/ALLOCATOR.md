@@ -8,6 +8,10 @@ The allocator is **thread-safe** via `Talck<spin::Mutex<()>, MmapOom>`:
 - The `spin::Mutex` provides mutual exclusion; no two threads allocate/deallocate concurrently.
 - OOM handling (mmap via syscall) runs under the same lock.
 
+### No circular dependency with libc
+
+The lock is **`spin::Mutex`** (from the `spin` crate), not `pthread_mutex`. It is a userspace spinlock with no syscalls and no libc dependency. So when our `malloc` runs, it does not call pthread or libc; there is no risk of deadlock from "malloc → pthread_mutex_lock → libc → malloc." The `pthread_*` symbols we export are for *application* code and delegate to system libc; the allocator itself never uses them.
+
 ## Contention
 
 Under high concurrency, lock contention may limit throughput.
