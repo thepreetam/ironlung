@@ -1,0 +1,14 @@
+/target/
+.cargo/registry/
+.cargo/.global-cache
+.cargo/.package-cache
+.cargo/.package-cache-mutate
+alloc_bench
+io_bench
+victim
+*.so
+*.dylib
+*.log
+.DS_Store
+spec_base.md
+spec_engg.md

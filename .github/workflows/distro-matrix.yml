@@ -1,0 +1,98 @@
+name: Distro Matrix
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  distro:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: centos7
+            image: centos:7
+          - distro: ubuntu1804
+            image: ubuntu:18.04
+          - distro: ubuntu2004
+            image: ubuntu:20.04
+          - distro: ubuntu2204
+            image: ubuntu:22.04
+          - distro: debian11
+            image: debian:11
+          - distro: debian12
+            image: debian:12
+          - distro: rockylinux9
+            image: rockylinux:9
+          - distro: rhel9
+            image: redhat/ubi9
+          - distro: fedora40
+            image: fedora:40
+          - distro: arch
+            image: archlinux:latest
+          - distro: alpine
+            image: alpine:3.19
+
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          . $HOME/.cargo/env
+
+      - name: Install build deps
+        run: chmod +x scripts/ci-install-deps.sh && ./scripts/ci-install-deps.sh ${{ matrix.distro }}
+
+      - name: Build IronLung
+        run: |
+          . $HOME/.cargo/env
+          cargo build --release --features sandbox -p ironlung
+          cargo build --release -p ironlung-sandbox
+
+      - name: Smoke test
+        run: |
+          . $HOME/.cargo/env
+          gcc -o victim victim.c
+          LD_PRELOAD=$(pwd)/target/release/libironlung.so ./victim
+
+      - name: Sandbox test
+        run: |
+          . $HOME/.cargo/env
+          export PATH="$HOME/.cargo/bin:$PATH"
+          ./scripts/test_sandbox.sh
+
+      - name: ABI check
+        run: |
+          . $HOME/.cargo/env
+          cargo run -p ironlung-abi-check -- target/release/libironlung.so
+
+      - name: I/O benchmark
+        run: |
+          . $HOME/.cargo/env
+          gcc -O2 -o io_bench tests/io_bench.c
+          echo "baseline:" && ./io_bench 10000 4096 2>&1 | tail -1
+          echo "ironlung:" && LD_PRELOAD=$(pwd)/target/release/libironlung.so ./io_bench 10000 4096 2>&1 | tail -1
+        continue-on-error: true
+
+      - name: Alloc benchmark
+        run: |
+          . $HOME/.cargo/env
+          gcc -O2 -lpthread -o alloc_bench tests/alloc_bench.c
+          echo "baseline:" && ./alloc_bench 10000 4 2>&1 | tail -1
+          echo "ironlung:" && LD_PRELOAD=$(pwd)/target/release/libironlung.so ./alloc_bench 10000 4 2>&1 | tail -1
+        continue-on-error: true
+
+      - name: App matrix
+        run: |
+          . $HOME/.cargo/env
+          ./scripts/run_app_matrix.sh
+        continue-on-error: true

@@ -1,0 +1,13 @@
+[package]
+name = "ironlung-sandbox"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ironlung-sandbox"
+path = "src/main.rs"
+
+[dependencies]
+ironlung-protocol = { path = "../ironlung-protocol" }
+libc = "0.2"
+libseccomp = "0.4"

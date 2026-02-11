@@ -1,0 +1,13 @@
+[package]
+name = "ironlung-protocol"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+libc = { version = "0.2", default-features = false }

@@ -1,0 +1,10 @@
+[package]
+name = "ironlung-abi-check"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ironlung-abi-check"
+path = "src/main.rs"
+
+[dependencies]
