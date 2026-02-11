@@ -7,7 +7,6 @@ fn main() {
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let src = std::path::Path::new(&manifest_dir).join("csrc/printf_shim.c");
         let obj = std::path::Path::new(&out_dir).join("printf_shim.o");
-        let lib = std::path::Path::new(&out_dir).join("libprintf_shim.a");
 
         let compiler = cc::Build::new()
             .file(&src)
@@ -28,6 +27,7 @@ fn main() {
 
         // Link the .o directly (absolute path) so the linker always pulls in printf/fprintf/vprintf.
         let obj_abs = std::fs::canonicalize(&obj).expect("canonicalize printf_shim.o");
+        println!("cargo:rustc-link-arg=-Wl,--export-dynamic");
         println!("cargo:rustc-link-arg=-Wl,-u,printf");
         println!("cargo:rustc-link-arg=-Wl,-u,fprintf");
         println!("cargo:rustc-link-arg=-Wl,-u,vprintf");
