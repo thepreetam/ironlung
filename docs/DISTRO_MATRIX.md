@@ -72,3 +72,5 @@ Campaign C certifies IronLung across a matrix of Linux distributions covering ~9
 ## CI Integration
 
 See `.github/workflows/distro-matrix.yml` for container-based runs. Each distro uses `scripts/ci-install-deps.sh` for package installation.
+
+**Excluded from CI:** CentOS 7 and Ubuntu 18.04 are omitted from the workflow because GitHub’s Actions runner (Node 20) needs glibc ≥ 2.28 for post-job cleanup; these images provide glibc 2.17 and 2.27 respectively. They remain in the docs for local/manual testing.

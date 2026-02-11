@@ -11,10 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - distro: centos7
-            image: centos:7
-          - distro: ubuntu1804
-            image: ubuntu:18.04
+          # centos7, ubuntu1804: glibc too old for Actions runner (Node needs 2.28+)
           - distro: ubuntu2004
             image: ubuntu:20.04
           - distro: ubuntu2204
