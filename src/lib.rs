@@ -98,14 +98,14 @@ pub extern "C" fn rust_eh_personality() {
     // Stub for cdylib; with panic=abort this is never called.
 }
 
-/// Force linker to keep C printf shim symbols (printf, fprintf, vprintf) in the cdylib.
+// Force linker to keep C printf shim symbols (printf, fprintf, vprintf) in the cdylib.
 #[cfg(all(target_os = "linux", not(test)))]
 extern "C" {
     fn ironlung_printf_keep();
 }
 #[cfg(all(target_os = "linux", not(test)))]
 #[used]
-static KEEP_PRINTF_SHIM: extern "C" fn() = ironlung_printf_keep;
+static KEEP_PRINTF_SHIM: unsafe extern "C" fn() = ironlung_printf_keep;
 
 #[cfg(not(test))]
 #[panic_handler]
