@@ -10,6 +10,7 @@ edition = "2021"
 default = ["stdio-kernel", "stdio-kernel-fread-fwrite"]
 sandbox = []
 alloc-cache = []
+alloc-quarantine = []   # delay reuse of freed blocks (UAF mitigation); FIFO, cap by count and bytes
 stdio-kernel = []           # kernel-delegating vprintf (no-op on non-Linux)
 stdio-kernel-fread-fwrite = []  # fread/fwrite via fileno + read/write (no-op on non-Linux)
 stdio-libc = []             # force delegate printf/fread/fwrite to libc (disables kernel path when set)
@@ -17,6 +18,9 @@ pthread-native = []         # Linux: pthread_create/join via clone3+futex (no li
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[profile.dev]
+panic = "abort"
 
 [profile.release]
 lto = true

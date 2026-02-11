@@ -33,6 +33,15 @@ free(p)   → GLOBAL.lock() → talc.dealloc(header_ptr, layout)
 
 Bootstrap heap: 64 pages from static buffer. OOM: mmap 16 pages, claim into talc.
 
+### Quarantine (feature `alloc-quarantine`)
+
+When the `alloc-quarantine` feature is enabled, freed blocks are not returned to the allocator immediately; they are placed in a fixed-size FIFO quarantine (no heap used for the queue). This delays reuse and reduces the chance that use-after-free hits reallocated memory.
+
+- **free(ptr):** The block is pushed onto the quarantine. If the quarantine is at capacity (by entry count or total bytes), the oldest entry is drained (deallocated via talc) before adding the new one. If the new block would still exceed the bytes cap, it is deallocated immediately.
+- **malloc:** If `talc.alloc` returns null, the implementation drains up to a few entries from the quarantine (oldest first), then retries allocation.
+- **Cap:** 256 entries and 512 KiB total quarantined bytes. Single lock (`spin::Mutex`) for the quarantine; dealloc is never called while holding the quarantine lock to avoid deadlock with the global allocator lock.
+- See [ALLOCATOR_QUARANTINE.md](ALLOCATOR_QUARANTINE.md) for design and scope.
+
 ## Async-Signal-Safety
 
 **malloc/free/realloc/calloc are NOT async-signal-safe.** They take locks. Do not call from signal handlers. See [SIGNAL_SAFETY.md](SIGNAL_SAFETY.md).

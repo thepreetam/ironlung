@@ -4,7 +4,7 @@ A no_std Rust shared object (.so) acting as a partial libc replacement via LD_PR
 
 > "Trust No Pointer, Verify Every Byte, Delegate to the Kernel."
 
-**Status:** Experimental. Use at your own risk. Not a full libc replacement—focuses on a critical subset (allocator, string ops, stdio, networking) and hardens complex functions via process sandboxing. See [Implemented](#implemented) for coverage and [Gaps and limitations](#gaps-and-limitations) for what is out of scope or optional. No guarantee of ABI completeness, support, or compatibility with all programs. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). ABI and CI: [docs/CI_ABI.md](docs/CI_ABI.md).
+**Status:** Experimental. Use at your own risk. Not a full libc replacement—focuses on a memory-safe critical subset (allocator, string ops, stdio, networking) and hardens complex functions via process sandboxing; UAF hardening (quarantine) is planned for v0.2. See [Implemented](#implemented) for coverage and [Gaps and limitations](#gaps-and-limitations) for what is out of scope or optional. No guarantee of ABI completeness, support, or compatibility with all programs. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). ABI and CI: [docs/CI_ABI.md](docs/CI_ABI.md).
 
 ## Target
 
@@ -115,7 +115,7 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 - **Glibc conformance** — Full glibc test suite runs on release (workflow fails if it fails), weekly schedule, and manual trigger; push CI does not gate on it.
 - **Kernel stdio default** — On Linux, kernel-path printf and fread/fwrite are the default; use feature `stdio-libc` to force delegate to libc.
 - **Wide char** — Minimal wchar delegation (`wcslen`, `wcscpy`, `wcsncpy`, `wcscmp`); full locale out of scope.
-- **No allocator quarantine or shadow memory** — Design only; see [docs/ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md). Optional implementation out of scope for current plan.
+- **Quarantine / UAF hardening (final gap)** — v0.1 provides **memory safety** (allocator internal consistency; Rust logic; no double-free or use-after-free inside the allocator). **Quarantine** (delayed reuse of freed memory to mitigate UAF from the C application) is not in v0.1; it is planned for **v0.2**. See [docs/ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md).
 - **Sandbox and glibc CI** — Sandbox test and Glibc validation workflow are best-effort in CI (continue-on-error); run locally or manually when needed.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for future work and delegation rules.
@@ -131,7 +131,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for future work and delegation 
 | [ERRNO.md](docs/ERRNO.md) | errno contract and tests |
 | [STDIO_KERNEL.md](docs/STDIO_KERNEL.md) | Kernel-delegating printf and fread/fwrite (default on Linux) |
 | [SUBSET.md](docs/SUBSET.md) | Curated symbol subset and next-tier process |
-| [ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md) | Quarantine/shadow design (not implemented) |
+| [ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md) | Quarantine/shadow design; v0.2 hardening (UAF mitigation) |
 | [PTHREAD_NATIVE.md](docs/PTHREAD_NATIVE.md) | Native pthread create/join/mutex/cond via clone3+futex (optional feature) |
 | [DISTRO_MATRIX.md](docs/DISTRO_MATRIX.md) | Target distros and CI integration |
 | [BENCHMARKS.md](docs/BENCHMARKS.md) | I/O and allocator benchmarks |

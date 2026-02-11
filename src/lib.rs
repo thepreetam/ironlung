@@ -98,10 +98,10 @@ fn ensure_allocator_init() {
 #[global_allocator]
 static GLOBAL: Talck<spin::Mutex<()>, MmapOom> = Talck::new(Talc::new(MmapOom));
 
-#[cfg(all(target_os = "linux", not(test)))]
+#[cfg(not(test))]
 #[no_mangle]
 pub extern "C" fn rust_eh_personality() {
-    // Stub for cdylib; with panic=abort this is never called.
+    // Stub for cdylib; with panic=abort this is never called. Needed on non-Linux when deps reference it.
 }
 
 // Force linker to keep C printf shim symbols (printf, fprintf, vprintf) in the cdylib.
@@ -140,6 +140,89 @@ extern "C" {
     fn alloc_cache_push(p: *mut u8) -> libc::c_int;
 }
 
+// ---------- Quarantine (feature alloc-quarantine): delay reuse for UAF mitigation ----------
+#[cfg(feature = "alloc-quarantine")]
+const QUARANTINE_MAX_ENTRIES: usize = 256;
+#[cfg(feature = "alloc-quarantine")]
+const QUARANTINE_BYTES_CAP: usize = PAGE_SIZE * 128; // 512 KiB total quarantined
+
+#[cfg(feature = "alloc-quarantine")]
+struct QuarantineState {
+    ptrs: [*mut u8; QUARANTINE_MAX_ENTRIES],
+    sizes: [usize; QUARANTINE_MAX_ENTRIES],
+    head: usize,
+    len: usize,
+    total_bytes: usize,
+}
+#[cfg(feature = "alloc-quarantine")]
+unsafe impl Send for QuarantineState {}
+
+#[cfg(feature = "alloc-quarantine")]
+static QUARANTINE: spin::Mutex<QuarantineState> = spin::Mutex::new(QuarantineState {
+    ptrs: [core::ptr::null_mut(); QUARANTINE_MAX_ENTRIES],
+    sizes: [0; QUARANTINE_MAX_ENTRIES],
+    head: 0,
+    len: 0,
+    total_bytes: 0,
+});
+
+#[cfg(feature = "alloc-quarantine")]
+fn quarantine_push_and_maybe_drain(header_ptr: *mut u8, size: usize) {
+    let layout = Layout::from_size_align(size + MALLOC_HEADER, core::mem::align_of::<usize>()).unwrap();
+    let mut q = QUARANTINE.lock();
+    while q.len >= QUARANTINE_MAX_ENTRIES || q.total_bytes + size > QUARANTINE_BYTES_CAP {
+        if q.len == 0 {
+            break;
+        }
+        let head = q.head;
+        let old_ptr = q.ptrs[head];
+        let old_size = q.sizes[head];
+        q.ptrs[head] = core::ptr::null_mut();
+        q.sizes[head] = 0;
+        q.head = (head + 1) % QUARANTINE_MAX_ENTRIES;
+        q.len -= 1;
+        q.total_bytes -= old_size;
+        drop(q);
+        unsafe { GLOBAL.dealloc(old_ptr, Layout::from_size_align(old_size + MALLOC_HEADER, core::mem::align_of::<usize>()).unwrap()) };
+        q = QUARANTINE.lock();
+    }
+    if q.len < QUARANTINE_MAX_ENTRIES && q.total_bytes + size <= QUARANTINE_BYTES_CAP {
+        let idx = (q.head + q.len) % QUARANTINE_MAX_ENTRIES;
+        q.ptrs[idx] = header_ptr;
+        q.sizes[idx] = size;
+        q.len += 1;
+        q.total_bytes += size;
+    } else {
+        drop(q);
+        unsafe { GLOBAL.dealloc(header_ptr, layout) };
+    }
+}
+
+#[cfg(feature = "alloc-quarantine")]
+fn quarantine_drain_one() -> bool {
+    let (old_ptr, layout) = {
+        let mut q = QUARANTINE.lock();
+        if q.len == 0 {
+            return false;
+        }
+        let head = q.head;
+        let old_ptr = q.ptrs[head];
+        let old_size = q.sizes[head];
+        q.ptrs[head] = core::ptr::null_mut();
+        q.sizes[head] = 0;
+        q.head = (head + 1) % QUARANTINE_MAX_ENTRIES;
+        q.len -= 1;
+        q.total_bytes -= old_size;
+        (old_ptr, Layout::from_size_align(old_size + MALLOC_HEADER, core::mem::align_of::<usize>()).unwrap())
+    };
+    if !old_ptr.is_null() {
+        unsafe { GLOBAL.dealloc(old_ptr, layout) };
+        true
+    } else {
+        false
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
     if size == 0 {
@@ -164,7 +247,16 @@ pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
     }
 
     ensure_allocator_init();
-    let ptr = GLOBAL.alloc(layout);
+    #[allow(unused_mut)]
+    let mut ptr = GLOBAL.alloc(layout);
+    #[cfg(feature = "alloc-quarantine")]
+    {
+        let mut drained = 0;
+        while ptr.is_null() && drained < 8 && quarantine_drain_one() {
+            drained += 1;
+            ptr = GLOBAL.alloc(layout);
+        }
+    }
     if ptr.is_null() {
         core::ptr::null_mut()
     } else {
@@ -180,15 +272,21 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
     }
     let header_ptr = (ptr as *mut u8).sub(MALLOC_HEADER);
     let size = core::ptr::read(header_ptr as *const usize);
-    let total = size.checked_add(MALLOC_HEADER).unwrap();
-    let layout = Layout::from_size_align(total, core::mem::align_of::<usize>()).unwrap();
 
     #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
     if size == CACHE_SIZE_CLASS && alloc_cache_push(header_ptr) != 0 {
         return;
     }
 
-    GLOBAL.dealloc(header_ptr, layout);
+    #[cfg(feature = "alloc-quarantine")]
+    quarantine_push_and_maybe_drain(header_ptr, size);
+
+    #[cfg(not(feature = "alloc-quarantine"))]
+    {
+        let total = size.checked_add(MALLOC_HEADER).unwrap();
+        let layout = Layout::from_size_align(total, core::mem::align_of::<usize>()).unwrap();
+        GLOBAL.dealloc(header_ptr, layout);
+    }
 }
 
 #[no_mangle]
