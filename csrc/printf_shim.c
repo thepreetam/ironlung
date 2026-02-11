@@ -25,6 +25,7 @@ static int validate_format(const char *fmt) {
     return (fmt[n] == '\0' && n < FORMAT_MAX) ? 0 : -1;
 }
 
+#ifndef STDIO_KERNEL
 typedef int (*vprintf_fn)(const char *, va_list);
 
 static vprintf_fn get_real_vprintf(void) {
@@ -50,6 +51,18 @@ int printf(const char *format, ...) {
     va_end(ap);
     return r;
 }
+#else
+extern int vprintf(const char *format, va_list ap);
+
+int printf(const char *format, ...) {
+    if (validate_format(format) != 0) return -1;
+    va_list ap;
+    va_start(ap, format);
+    int r = vprintf(format, ap);
+    va_end(ap);
+    return r;
+}
+#endif
 
 /* fprintf - validate and delegate */
 typedef int (*vfprintf_fn)(FILE *, const char *, va_list);

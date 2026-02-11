@@ -10,9 +10,14 @@ The allocator is **thread-safe** via `Talck<spin::Mutex<()>, MmapOom>`:
 
 ## Contention
 
-Under high concurrency, lock contention may limit throughput. Future improvements:
+Under high concurrency, lock contention may limit throughput.
 
-- **Per-thread cache**: Each thread maintains a small free-list; fast path serves from cache; slow path acquires global lock and refills.
+### Per-thread cache (feature `alloc-cache`)
+
+When the `alloc-cache` feature is enabled, a small per-thread free-list is used for a single size class (64 bytes). Fast path: serve from thread-local cache without the global lock. Slow path: acquire global lock, alloc from talc. Free: push to cache if size matches and cache not full; else global dealloc. malloc/free remain **not** async-signal-safe. Benchmark: build with `cargo build --release --features alloc-cache` and run `tests/alloc_bench.c` with multiple threads; compare to build without the feature. See [BENCHMARKS.md](BENCHMARKS.md) for baseline.
+
+### Other options
+
 - **Alternative allocators**: mimalloc/snmalloc patterns for higher scalability (evaluate if needed).
 
 ## Current Architecture

@@ -4,7 +4,7 @@ A no_std Rust shared object (.so) acting as a partial libc replacement via LD_PR
 
 > "Trust No Pointer, Verify Every Byte, Delegate to the Kernel."
 
-**Status:** Experimental. Use at your own risk. Not a full libc replacement—focuses on a critical subset (allocator, string ops, stdio, networking) and hardens complex functions via process sandboxing. See [Implemented](#implemented) for coverage. No guarantee of ABI completeness, support, or compatibility with all programs.
+**Status:** Experimental. Use at your own risk. Not a full libc replacement—focuses on a critical subset (allocator, string ops, stdio, networking) and hardens complex functions via process sandboxing. See [Implemented](#implemented) for coverage. No guarantee of ABI completeness, support, or compatibility with all programs. Architecture (delegation vs reimplementation rule): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Target
 
@@ -45,6 +45,8 @@ Run with sandboxed getaddrinfo:
 LD_PRELOAD=./target/release/libironlung.so IRONLUNG_SANDBOX_PATH=./target/release/ironlung-sandbox ./victim
 ```
 
+**CI:** The sandbox test step in CI is best-effort (`continue-on-error: true`) because it can hang in containerized runners. Run `sh scripts/test_sandbox.sh` locally for getaddrinfo validation.
+
 ## Test
 
 ```bash
@@ -84,6 +86,6 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 - **getpwnam** / **crypt**
 
 ### Phase 4: Validation
-- `scripts/run_glibc_tests.sh` — glibc test suite
-- `scripts/run_app_matrix.sh` — nginx, bash, python, redis smoke tests
-- `scripts/doppelganger_fuzz.py` — differential fuzzing
+- **CI (smoke):** Distro matrix (build, smoke test, ABI check, app matrix), plus doppelgänger fuzz job (best-effort).
+- **Full validation (manual):** Run `scripts/run_glibc_tests.sh [glibc_build_dir]` with a built glibc tree for conformance; run `scripts/doppelganger_fuzz.py` locally for more iterations.
+- Scripts: `scripts/run_glibc_tests.sh`, `scripts/run_app_matrix.sh`, `scripts/doppelganger_fuzz.py`.

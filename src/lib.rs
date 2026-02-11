@@ -24,6 +24,8 @@ mod locale;
 mod passwd;
 #[cfg(target_os = "linux")]
 pub mod sandbox;
+#[cfg(all(feature = "stdio-kernel", target_os = "linux"))]
+mod stdio_kernel;
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::panic::PanicInfo;
@@ -113,6 +115,16 @@ fn panic(_info: &PanicInfo) -> ! {
 // ============== Memory Allocator Interceptors ==============
 const MALLOC_HEADER: usize = core::mem::size_of::<usize>();
 
+/// Size class for per-thread cache (feature alloc-cache). Must match refill layout.
+#[cfg(all(feature = "alloc-cache", target_os = "linux"))]
+const CACHE_SIZE_CLASS: usize = 64;
+
+#[cfg(all(feature = "alloc-cache", target_os = "linux"))]
+extern "C" {
+    fn alloc_cache_pop(out: *mut *mut u8) -> libc::c_int;
+    fn alloc_cache_push(p: *mut u8) -> libc::c_int;
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
     if size == 0 {
@@ -126,6 +138,16 @@ pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
         Ok(l) => l,
         Err(_) => return core::ptr::null_mut(),
     };
+
+    #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
+    if size == CACHE_SIZE_CLASS {
+        let mut out = core::ptr::null_mut::<u8>();
+        if alloc_cache_pop(&mut out) != 0 && !out.is_null() {
+            core::ptr::write(out as *mut usize, size);
+            return out.add(MALLOC_HEADER) as *mut c_void;
+        }
+    }
+
     ensure_allocator_init();
     let ptr = GLOBAL.alloc(layout);
     if ptr.is_null() {
@@ -145,6 +167,12 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
     let size = core::ptr::read(header_ptr as *const usize);
     let total = size.checked_add(MALLOC_HEADER).unwrap();
     let layout = Layout::from_size_align(total, core::mem::align_of::<usize>()).unwrap();
+
+    #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
+    if size == CACHE_SIZE_CLASS && alloc_cache_push(header_ptr) != 0 {
+        return;
+    }
+
     GLOBAL.dealloc(header_ptr, layout);
 }
 

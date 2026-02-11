@@ -20,6 +20,17 @@ Functions that are safe to call from a signal handler must not:
 | `puts` | **NO** | Uses syscall (write) - generally safe, but may interleave with other output; avoid for predictability |
 | `pthread_*` | **NO** | All take locks or delegate to libc |
 
+## Guaranteed async-signal-safe set (contract)
+
+IronLung guarantees the following are safe to call from a signal handler when used as specified:
+
+| Function | Contract |
+|----------|----------|
+| `memcpy(dst, src, n)` | `dst`, `src` valid; `n` bounded; no overlap |
+| `memmove(dst, src, n)` | `dst`, `src` valid; `n` bounded |
+
+All other IronLung-intercepted functions (including `strcpy`, `puts`, `malloc`, `free`, `pthread_*`) are **not** async-signal-safe. Do not call them from a signal handler.
+
 ## Safe Subset for Signal Handlers
 
 From IronLung, only `memcpy` and `memmove` are **guaranteed async-signal-safe** when given valid, bounded pointers and sizes. Do not call `malloc`, `free`, `strcpy`, or `puts` from a signal handler.
@@ -32,3 +43,14 @@ In signal handlers, use only:
 - `_exit` to terminate
 
 Avoid any IronLung function that touches the allocator or pthread layer.
+
+## Test
+
+`tests/signal_safe_test.c` exercises the guaranteed subset: a signal handler calls only `memcpy` then `_exit`. Build and run with LD_PRELOAD to verify under IronLung:
+
+```bash
+gcc -o signal_safe_test tests/signal_safe_test.c
+LD_PRELOAD=./target/release/libironlung.so ./signal_safe_test
+```
+
+Exit code 0 means the handler ran and exited safely.

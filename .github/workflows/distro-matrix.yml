@@ -70,7 +70,7 @@ jobs:
           . $HOME/.cargo/env
           export PATH="$HOME/.cargo/bin:$PATH"
           sh scripts/test_sandbox.sh
-        continue-on-error: true
+        continue-on-error: true  # best-effort in CI; run scripts/test_sandbox.sh locally for getaddrinfo validation
 
       - name: ABI check
         if: matrix.distro != 'alpine'
@@ -102,3 +102,27 @@ jobs:
         run: |
           . $HOME/.cargo/env
           sh scripts/run_app_matrix.sh
+
+  fuzz:
+    name: Doppelgänger fuzz
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build IronLung
+        run: |
+          . $HOME/.cargo/env
+          cargo build --release -p ironlung
+
+      - name: Fuzz (doppelganger)
+        run: |
+          . $HOME/.cargo/env
+          python3 scripts/doppelganger_fuzz.py
+        continue-on-error: true

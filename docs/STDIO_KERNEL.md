@@ -1,0 +1,29 @@
+# Kernel-delegating printf (feature `stdio-kernel`)
+
+## Design
+
+Two-pass, no libc in the hot path:
+
+1. **Parse format string:** Reject `%n` (format-string attack). Limit format length (e.g. 4096). Compute upper bound of output length or use a fixed output buffer.
+2. **Format and write:** Use a fixed stack buffer (e.g. 4 KiB). Format supported specifiers into the buffer. Single `write(1, buf, len)` (or `write(2, ...)` for stderr in fprintf).
+
+Must be `no_std`-friendly: no libc `FILE*`, no `vprintf`.
+
+## Supported specifiers (initial subset)
+
+- `%%` — literal `%`
+- `%s` — string (null-terminated)
+- `%d`, `%i` — signed int
+- `%u` — unsigned int
+- `%x`, `%X` — hex
+- `%p` — pointer
+
+Width/precision (e.g. `%10s`) can be added later. Unsupported specifiers can be delegated to libc or output as `?`.
+
+## Integration
+
+When feature `stdio-kernel` is enabled, `vprintf` is implemented in Rust and delegates to the kernel (`write` syscall). `printf` remains a small C wrapper that does `va_start`; `vprintf(fmt, ap)`; `va_end`. `fprintf` continues to validate and delegate to libc (or a future kernel path for fd 1/2).
+
+## Buffer limits
+
+Output is capped at 4096 bytes per call to avoid stack overflow and unbounded allocation. Longer output is truncated (or split across multiple writes in a future revision).

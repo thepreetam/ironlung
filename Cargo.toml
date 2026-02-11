@@ -9,6 +9,8 @@ edition = "2021"
 [features]
 default = []
 sandbox = []
+alloc-cache = []
+stdio-kernel = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
