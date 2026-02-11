@@ -9,7 +9,6 @@ fclose
 fgets
 fopen
 fork
-fprintf
 free
 freeaddrinfo
 fread
@@ -24,7 +23,6 @@ malloc
 memcpy
 memmove
 open
-printf
 puts
 pthread_cond_destroy
 pthread_cond_init
@@ -42,5 +40,4 @@ recv
 send
 socket
 strcpy
-vprintf
 write
