@@ -74,6 +74,7 @@ jobs:
       - name: ABI check
         run: |
           . $HOME/.cargo/env
+          cargo clean -p ironlung && cargo build --release --features sandbox -p ironlung
           SO="$WORKSPACE/target/release/libironlung.so"
           if [ ! -f "$SO" ]; then echo "error: $SO not found"; ls -la "$WORKSPACE/target/release/" 2>/dev/null || true; exit 1; fi
           cargo run -p ironlung-abi-check -- "$SO"
