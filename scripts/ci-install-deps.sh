@@ -19,7 +19,7 @@ case "$DISTRO" in
         apt-get update -qq && apt-get install -y -qq build-essential libseccomp-dev curl ca-certificates
         ;;
     rockylinux9|rhel9)
-        dnf install -y gcc libseccomp-devel curl tar gzip ca-certificates
+        dnf install -y --allowerasing gcc libseccomp-devel curl tar gzip ca-certificates
         ;;
     fedora40)
         dnf install -y gcc libseccomp-devel curl ca-certificates
