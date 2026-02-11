@@ -25,8 +25,8 @@ if [ ! -x "$SANDBOX" ]; then
 fi
 
 echo "Testing getaddrinfo via sandbox..."
-# Use a small C program that calls getaddrinfo
-CODE='
+# Use a small C program that calls getaddrinfo (heredoc with 'EOF' prevents $ expansion)
+if ! gcc -x c -o /tmp/ga_test - <<'EOF' 2>&1; then
 #include <stdio.h>
 #include <netdb.h>
 #include <string.h>
@@ -40,8 +40,7 @@ int main() {
     freeaddrinfo(res);
     return 0;
 }
-'
-if ! echo "$CODE" | gcc -x c -o /tmp/ga_test - - 2>&1; then
+EOF
     echo "FAIL: gcc failed to compile test program"
     exit 1
 fi
