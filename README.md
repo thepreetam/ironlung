@@ -114,7 +114,7 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 - **Glibc conformance** — Full glibc test suite runs on release (workflow fails if it fails), weekly schedule, and manual trigger; push CI does not gate on it.
 - **Optional kernel-delegating stdio** — Kernel-path printf and fread/fwrite are behind features (`stdio-kernel`, `stdio-kernel-fread-fwrite`); default is validate-then-delegate to libc.
 - **Wide char** — Minimal wchar delegation (`wcslen`, `wcscpy`, `wcsncpy`, `wcscmp`); full locale out of scope.
-- **No allocator quarantine or shadow memory** — Out of scope for current plan.
+- **No allocator quarantine or shadow memory** — Design only; see [docs/ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md). Optional implementation out of scope for current plan.
 - **Sandbox and glibc CI** — Sandbox test and Glibc validation workflow are best-effort in CI (continue-on-error); run locally or manually when needed.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for future work and delegation rules.
