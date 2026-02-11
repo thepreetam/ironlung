@@ -55,6 +55,7 @@ jobs:
       - name: Build IronLung
         run: |
           . $HOME/.cargo/env
+          echo "WORKSPACE=$(pwd)" >> $GITHUB_ENV
           cargo build --release --features sandbox -p ironlung
           cargo build --release -p ironlung-sandbox
 
@@ -73,8 +74,8 @@ jobs:
       - name: ABI check
         run: |
           . $HOME/.cargo/env
-          SO="$(find . -name 'libironlung.so' -type f 2>/dev/null | head -1)"
-          if [ -z "$SO" ]; then echo "error: libironlung.so not found"; exit 1; fi
+          SO="$WORKSPACE/target/release/libironlung.so"
+          if [ ! -f "$SO" ]; then echo "error: $SO not found"; ls -la "$WORKSPACE/target/release/" 2>/dev/null || true; exit 1; fi
           cargo run -p ironlung-abi-check -- "$SO"
 
       - name: I/O benchmark
