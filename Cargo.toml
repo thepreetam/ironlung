@@ -3,11 +3,11 @@ members = [".", "crates/ironlung-protocol", "crates/ironlung-sandbox", "crates/i
 
 [package]
 name = "ironlung"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 [features]
-default = ["stdio-kernel", "stdio-kernel-fread-fwrite"]
+default = ["stdio-kernel", "stdio-kernel-fread-fwrite", "alloc-quarantine"]
 sandbox = []
 alloc-cache = []
 alloc-quarantine = []   # delay reuse of freed blocks (UAF mitigation); FIFO, cap by count and bytes

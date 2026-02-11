@@ -4,8 +4,7 @@ This document describes a **design** for optional allocator hardening: quarantin
 
 ## Release scope
 
-- **v0.1:** Memory safety (allocator internal consistency). No quarantine; freed memory can be reused immediately. UAF from buggy C code is not mitigated.
-- **v0.2:** Hardening (UAF mitigation) via quarantine (and optionally shadow memory) as designed in this doc. Implementation gated by a feature; design remains as-is.
+- **v1.0:** Memory safety (allocator internal consistency) **and** UAF mitigation via **quarantine on by default** (feature `alloc-quarantine`). Build with `default-features = false` and without `alloc-quarantine` for memory safety only. Shadow memory remains optional future work.
 
 ## Goals
 
@@ -37,7 +36,7 @@ This document describes a **design** for optional allocator hardening: quarantin
 
 **Quarantine** is implemented when the feature `alloc-quarantine` is enabled (e.g. `cargo build --release --features alloc-quarantine`). Behaviour: FIFO queue, cap by count (256 entries) and total bytes (512 KiB); `free` pushes into quarantine (draining oldest when over cap); `malloc` on OOM drains from quarantine and retries. No ABI or API changes; quarantine is internal to the allocator. See [ALLOCATOR.md](ALLOCATOR.md) for the concrete flow.
 
-Shadow memory is **not** implemented; it remains optional future work for v0.2.
+Shadow memory is **not** implemented; it remains optional future work.
 
 ## References
 

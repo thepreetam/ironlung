@@ -56,7 +56,7 @@ Implemented in Rust; no kernel syscall for the operation itself (allocator uses 
 - **Kernel-delegating printf:** When feature `stdio-kernel` is on (default on Linux), `vprintf` is implemented in Rust (subset: `%%`, `%s`, `%d`, `%x`, `%p`, etc.) and writes via `write(1, buf, len)`. See [STDIO_KERNEL.md](STDIO_KERNEL.md). Full specifier set can be extended as needed.
 - **Kernel-delegating fread/fwrite:** When feature `stdio-kernel-fread-fwrite` is on (default on Linux), `fread` and `fwrite` obtain the fd via delegated `fileno(stream)` and perform `read`/`write` syscalls with size validation and EINTR handling. See [STDIO_KERNEL.md](STDIO_KERNEL.md).
 - **Per-thread allocator cache:** Reduce contention; fast path from thread-local free-list, slow path from global talc.
-- **Allocator hardening (quarantine / UAF mitigation):** Planned for v0.2; see [ALLOCATOR_QUARANTINE.md](ALLOCATOR_QUARANTINE.md).
+- **Allocator hardening (quarantine / UAF mitigation):** Implemented in v1.0 (default on); see [ALLOCATOR_QUARANTINE.md](ALLOCATOR_QUARANTINE.md).
 
 ---
 
