@@ -19,14 +19,26 @@ run_test() {
     local name="$1"
     local cmd="$2"
     echo -n "Testing $name... "
-    if eval "$cmd" >/dev/null 2>&1; then
-        echo "PASS"
-        PASS=$((PASS + 1))
-        return 0
+    if command -v timeout >/dev/null 2>&1; then
+        if timeout 10 sh -c "$cmd" >/dev/null 2>&1; then
+            echo "PASS"
+            PASS=$((PASS + 1))
+            return 0
+        else
+            echo "FAIL"
+            FAIL=$((FAIL + 1))
+            return 1
+        fi
     else
-        echo "FAIL"
-        FAIL=$((FAIL + 1))
-        return 1
+        if eval "$cmd" >/dev/null 2>&1; then
+            echo "PASS"
+            PASS=$((PASS + 1))
+            return 0
+        else
+            echo "FAIL"
+            FAIL=$((FAIL + 1))
+            return 1
+        fi
     fi
 }
 
