@@ -75,6 +75,8 @@ LD_PRELOAD=./target/release/libironlung.so ./victim
 
 With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 
+**Unit tests:** The main crate is no_std with `panic = "abort"`. Running `cargo test` hits duplicate-`core` / lang-item issues with `-Z build-std`, so unit tests are not run in CI. Validation is **build + victim + LD_PRELOAD** (above) and **doppelganger fuzz** (see Phase 4). The two protocol tests in `src/sandbox/protocol.rs` can be checked manually if needed.
+
 ## Implemented
 
 ### Core (kernel-delegating)

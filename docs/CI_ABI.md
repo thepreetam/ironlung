@@ -17,13 +17,13 @@ Export is achieved by:
 1. **Compile** [csrc/printf_shim.c](csrc/printf_shim.c) to `printf_shim.o` (in `OUT_DIR`) with `-fPIC` and `-fvisibility=default`.
 2. **Link** that `.o` into the cdylib by passing its absolute path as a link-arg (via `-Wl,<path>`).
 3. **Force undefined references** so the linker pulls in the object: `-Wl,-u,printf`, `-Wl,-u,fprintf`, `-Wl,-u,vprintf`, `-Wl,-u,snprintf`.
-4. **Force export** into the dynamic symbol table using a linker version script `printf_export.ver` (generated in `OUT_DIR`) with content: `IRONLUNG_1.0 { global: printf; fprintf; vprintf; snprintf; };`, passed as `-Wl,--version-script=<path>`.
+4. **Force export** into the dynamic symbol table. On **x86_64** only, a linker version script (generated in `OUT_DIR`) assigns all baseline symbols to **GLIBC_2.2.5** and is passed as `-Wl,--version-script=<path>`. On other Linux arches (e.g. arm64), the version script is omitted so the build succeeds (rustc injects its own script for cdylib; combining it with ours triggers "anonymous version tag cannot be combined with other version tags"). Symbols are still exported on all arches; only x86_64 gets GLIBC_2.2.5 versioning.
 
 All of the above are done in [build.rs](../build.rs) when `target_os = "linux"`.
 
 ## GLIBC version aliases (Phase 8)
 
-To improve compatibility with binaries built against older glibc (e.g. when using LD_PRELOAD), the build also applies a second version script `glibc_aliases.ver` that assigns the version **GLIBC_2.2.5** to every symbol in [symbols.baseline](../crates/ironlung-abi-check/symbols.baseline). That script is generated in `OUT_DIR` from the baseline so the same set of symbols is exported both unversioned and as `sym@GLIBC_2.2.5` / `sym@@GLIBC_2.2.5`. The ABI checker already treats versioned names (any `sym@...`) as matching the baseline name `sym`; no change to the checker was required.
+To improve compatibility with binaries built against older glibc (e.g. when using LD_PRELOAD), the build applies a single version script that assigns **GLIBC_2.2.5** to every symbol in [symbols.baseline](../crates/ironlung-abi-check/symbols.baseline). The script is generated in `OUT_DIR` from the baseline so the same set of symbols is exported as `sym@GLIBC_2.2.5` / `sym@@GLIBC_2.2.5`. The ABI checker treats versioned names (any `sym@...`) as matching the baseline name `sym`.
 
 ## Do Not Remove
 
@@ -31,7 +31,7 @@ To avoid CI regressions ("missing symbols: fprintf, printf, vprintf"):
 
 - **Do not remove or weaken** the version script, the `printf_shim.o` link step, or the `-Wl,-u,*` flags in [build.rs](../build.rs) without updating the ABI check and baseline.
 - **Do not remove** `printf`, `fprintf`, `vprintf`, or `snprintf` from [crates/ironlung-abi-check/symbols.baseline](../crates/ironlung-abi-check/symbols.baseline).
-- **Do not change** the ABI checker so that versioned symbol names (e.g. `printf@IRONLUNG_1.0`) no longer match the baseline name `printf`. The checker intentionally treats a baseline symbol as found when the dynamic symbol table has that name or a versioned form (name followed by `@`).
+- **Do not change** the ABI checker so that versioned symbol names (e.g. `printf@GLIBC_2.2.5`) no longer match the baseline name `printf`. The checker intentionally treats a baseline symbol as found when the dynamic symbol table has that name or a versioned form (name followed by `@`).
 
 ## ABI Check Step in CI
 

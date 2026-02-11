@@ -48,6 +48,7 @@ pub fn set_errno_from_syscall(ret: isize) {
 
 /// Set errno to a direct value (e.g. from sandbox response).
 #[inline(always)]
+#[allow(dead_code)]
 pub fn set_errno(e: libc::c_int) {
     let loc = get_errno_location();
     if !loc.is_null() {

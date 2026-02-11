@@ -11,6 +11,8 @@ pthread_mutex_cond_test
 *.dylib
 *.log
 .DS_Store
+fuzz_log.csv
+fuzz_out.txt
 spec_base.md
 spec_engg.md
 forward.md
