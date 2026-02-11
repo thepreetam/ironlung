@@ -34,7 +34,7 @@ struct addrinfo hints = {0}, *res = 0;
 int main() {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    int r = getaddrinfo("localhost", "http", &hints, &res);
+    int r = getaddrinfo("localhost", "80", &hints, &res);
     if (r) { printf("getaddrinfo failed: %d\n", r); return 1; }
     printf("getaddrinfo OK\n");
     freeaddrinfo(res);
