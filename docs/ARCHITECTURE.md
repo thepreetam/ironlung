@@ -26,7 +26,10 @@ Validate inputs/sizes, then call the real implementation via `dlsym(RTLD_NEXT, .
 | `socket`, `bind`, `listen`, `accept`, `connect` | Delegate |
 | `iconv_open`, `iconv`, `iconv_close` | Delegate |
 | `getpwnam`, `crypt` | Delegate with length limits |
-| `printf`, `vprintf`, `fprintf` | C shim: validate format (reject %n, length limit), delegate to libc |
+| `printf`, `vprintf`, `fprintf`, `snprintf` | C shim: validate format (reject %n, length limit), delegate to libc |
+| `memset`, `strcmp`, `strncpy` | Size/length limits, delegate to libc |
+| `getenv` | Name length limit, delegate to libc |
+| `wcslen`, `wcscpy`, `wcsncpy`, `wcscmp` | Minimal wchar; bounded, delegate to libc; full locale out of scope |
 
 ### Contained (sandbox)
 

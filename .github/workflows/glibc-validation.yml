@@ -1,9 +1,14 @@
-# Optional: run glibc test suite with LD_PRELOAD=libironlung.so.
-# Trigger manually via workflow_dispatch. Does not block main pipeline.
+# Run glibc test suite with LD_PRELOAD=libironlung.so.
+# Triggers: manual (workflow_dispatch), weekly (schedule), or on release (release: published).
+# On release, workflow fails if glibc tests fail; otherwise continue-on-error.
 name: Glibc validation
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * 0"
+  release:
+    types: [published]
 
 jobs:
   glibc:
@@ -45,4 +50,4 @@ jobs:
         run: |
           . $HOME/.cargo/env
           sh scripts/run_glibc_tests.sh "$GLIBC_BUILD"
-    continue-on-error: true
+    continue-on-error: ${{ github.event_name != 'release' }}

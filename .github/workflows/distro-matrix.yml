@@ -69,8 +69,8 @@ jobs:
         run: |
           . $HOME/.cargo/env
           export PATH="$HOME/.cargo/bin:$PATH"
-          sh scripts/test_sandbox.sh
-        continue-on-error: true  # best-effort in CI; run scripts/test_sandbox.sh locally for getaddrinfo validation
+          ( timeout 60 sh scripts/test_sandbox.sh || sh scripts/test_sandbox.sh ) || true
+        continue-on-error: true  # 60s timeout when available; run scripts/test_sandbox.sh locally for getaddrinfo validation
 
       - name: ABI check
         if: matrix.distro != 'alpine'

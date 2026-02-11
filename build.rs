@@ -18,7 +18,9 @@ fn main() {
             .arg(&src)
             .arg("-o")
             .arg(&obj);
-        if std::env::var_os("CARGO_FEATURE_STDIO_KERNEL").is_some() {
+        if std::env::var_os("CARGO_FEATURE_STDIO_KERNEL").is_some()
+            && std::env::var_os("CARGO_FEATURE_STDIO_LIBC").is_none()
+        {
             cmd.arg("-DSTDIO_KERNEL");
         }
         cmd.current_dir(&manifest_dir);
@@ -31,13 +33,14 @@ fn main() {
         let version_script = std::path::Path::new(&out_dir).join("printf_export.ver");
         std::fs::write(
             &version_script,
-            "IRONLUNG_1.0 { global: printf; fprintf; vprintf; };\n",
+            "IRONLUNG_1.0 { global: printf; fprintf; vprintf; snprintf; };\n",
         )
         .expect("write version script");
         let version_script_abs = std::fs::canonicalize(&version_script).expect("canonicalize .ver");
         println!("cargo:rustc-link-arg=-Wl,-u,printf");
         println!("cargo:rustc-link-arg=-Wl,-u,fprintf");
         println!("cargo:rustc-link-arg=-Wl,-u,vprintf");
+        println!("cargo:rustc-link-arg=-Wl,-u,snprintf");
         println!("cargo:rustc-link-arg=-Wl,{}", obj_abs.display());
         println!(
             "cargo:rustc-link-arg=-Wl,--version-script={}",

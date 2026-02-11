@@ -15,6 +15,7 @@ freeaddrinfo
 fread
 fwrite
 getaddrinfo
+getenv
 getpwnam
 iconv
 iconv_close
@@ -23,6 +24,7 @@ listen
 malloc
 memcpy
 memmove
+memset
 open
 printf
 puts
@@ -41,7 +43,14 @@ realloc
 recv
 rust_eh_personality
 send
+snprintf
 socket
+strcmp
 strcpy
+strncpy
 vprintf
+wcscmp
+wcscpy
+wcslen
+wcsncpy
 write

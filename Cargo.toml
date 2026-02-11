@@ -7,11 +7,12 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
+default = ["stdio-kernel", "stdio-kernel-fread-fwrite"]
 sandbox = []
 alloc-cache = []
-stdio-kernel = []
-stdio-kernel-fread-fwrite = []  # fread/fwrite via fileno + read/write syscalls
+stdio-kernel = []           # kernel-delegating vprintf (no-op on non-Linux)
+stdio-kernel-fread-fwrite = []  # fread/fwrite via fileno + read/write (no-op on non-Linux)
+stdio-libc = []             # force delegate printf/fread/fwrite to libc (disables kernel path when set)
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -22,7 +22,7 @@ Width/precision (e.g. `%10s`) can be added later. Unsupported specifiers can be 
 
 ## Integration
 
-When feature `stdio-kernel` is enabled, `vprintf` is implemented in Rust and delegates to the kernel (`write` syscall). `printf` remains a small C wrapper that does `va_start`; `vprintf(fmt, ap)`; `va_end`. `fprintf` continues to validate and delegate to libc (or a future kernel path for fd 1/2).
+When feature `stdio-kernel` is enabled and `stdio-libc` is not set, `vprintf` is implemented in Rust and delegates to the kernel (`write` syscall). `printf` remains a small C wrapper that does `va_start`; `vprintf(fmt, ap)`; `va_end`. `fprintf` continues to validate and delegate to libc (or a future kernel path for fd 1/2). **By default** the crate enables `stdio-kernel` and `stdio-kernel-fread-fwrite`; use the `stdio-libc` feature to force the libc delegate path.
 
 ## Buffer limits
 

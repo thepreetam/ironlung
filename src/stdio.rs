@@ -19,7 +19,7 @@ static FCLOSE: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 static FREAD: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 static FWRITE: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 static FGETS: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
-#[cfg(all(feature = "stdio-kernel-fread-fwrite", target_os = "linux"))]
+#[cfg(all(feature = "stdio-kernel-fread-fwrite", not(feature = "stdio-libc"), target_os = "linux"))]
 static FILENO: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 
 const MAX_SIZE: usize = 1_000_000_000;
@@ -65,7 +65,7 @@ pub unsafe extern "C" fn fread(
         _ => return 0,
     };
 
-    #[cfg(all(feature = "stdio-kernel-fread-fwrite", target_os = "linux"))]
+    #[cfg(all(feature = "stdio-kernel-fread-fwrite", not(feature = "stdio-libc"), target_os = "linux"))]
     {
         let fileno_ptr = cache::resolve(b"fileno\0", &FILENO);
         if !fileno_ptr.is_null() {
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn fwrite(
         _ => return 0,
     };
 
-    #[cfg(all(feature = "stdio-kernel-fread-fwrite", target_os = "linux"))]
+    #[cfg(all(feature = "stdio-kernel-fread-fwrite", not(feature = "stdio-libc"), target_os = "linux"))]
     {
         let fileno_ptr = cache::resolve(b"fileno\0", &FILENO);
         if !fileno_ptr.is_null() {

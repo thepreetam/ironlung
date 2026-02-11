@@ -78,11 +78,26 @@ int fprintf(FILE *stream, const char *format, ...) {
     return r;
 }
 
-/* Referenced from Rust so the linker keeps printf/fprintf/vprintf in the cdylib. */
+/* snprintf - validate format and size, delegate */
+typedef int (*snprintf_fn)(char *, size_t, const char *, ...);
+int snprintf(char *str, size_t size, const char *format, ...) {
+    if (!str || size == 0 || size > FORMAT_MAX * 4 || validate_format(format) != 0)
+        return -1;
+    snprintf_fn real = (snprintf_fn)dlsym(RTLD_NEXT, "snprintf");
+    if (!real) return -1;
+    va_list ap;
+    va_start(ap, format);
+    int r = real(str, size, format, ap);
+    va_end(ap);
+    return r;
+}
+
+/* Referenced from Rust so the linker keeps printf/fprintf/vprintf/snprintf in the cdylib. */
 void ironlung_printf_keep(void) {
     (void)&printf;
     (void)&fprintf;
 #ifndef STDIO_KERNEL
     (void)&vprintf;
 #endif
+    (void)&snprintf;
 }

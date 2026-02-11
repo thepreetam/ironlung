@@ -16,8 +16,8 @@ Export is achieved by:
 
 1. **Compile** [csrc/printf_shim.c](csrc/printf_shim.c) to `printf_shim.o` (in `OUT_DIR`) with `-fPIC` and `-fvisibility=default`.
 2. **Link** that `.o` into the cdylib by passing its absolute path as a link-arg (via `-Wl,<path>`).
-3. **Force undefined references** so the linker pulls in the object: `-Wl,-u,printf`, `-Wl,-u,fprintf`, `-Wl,-u,vprintf`.
-4. **Force export** into the dynamic symbol table using a linker version script `printf_export.ver` (generated in `OUT_DIR`) with content: `IRONLUNG_1.0 { global: printf; fprintf; vprintf; };`, passed as `-Wl,--version-script=<path>`.
+3. **Force undefined references** so the linker pulls in the object: `-Wl,-u,printf`, `-Wl,-u,fprintf`, `-Wl,-u,vprintf`, `-Wl,-u,snprintf`.
+4. **Force export** into the dynamic symbol table using a linker version script `printf_export.ver` (generated in `OUT_DIR`) with content: `IRONLUNG_1.0 { global: printf; fprintf; vprintf; snprintf; };`, passed as `-Wl,--version-script=<path>`.
 
 All of the above are done in [build.rs](../build.rs) when `target_os = "linux"`.
 
@@ -26,7 +26,7 @@ All of the above are done in [build.rs](../build.rs) when `target_os = "linux"`.
 To avoid CI regressions ("missing symbols: fprintf, printf, vprintf"):
 
 - **Do not remove or weaken** the version script, the `printf_shim.o` link step, or the `-Wl,-u,*` flags in [build.rs](../build.rs) without updating the ABI check and baseline.
-- **Do not remove** `printf`, `fprintf`, or `vprintf` from [crates/ironlung-abi-check/symbols.baseline](../crates/ironlung-abi-check/symbols.baseline).
+- **Do not remove** `printf`, `fprintf`, `vprintf`, or `snprintf` from [crates/ironlung-abi-check/symbols.baseline](../crates/ironlung-abi-check/symbols.baseline).
 - **Do not change** the ABI checker so that versioned symbol names (e.g. `printf@IRONLUNG_1.0`) no longer match the baseline name `printf`. The checker intentionally treats a baseline symbol as found when the dynamic symbol table has that name or a versioned form (name followed by `@`).
 
 ## ABI Check Step in CI

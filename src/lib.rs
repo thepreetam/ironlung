@@ -19,12 +19,16 @@ mod socket;
 #[cfg(target_os = "linux")]
 mod dns;
 #[cfg(target_os = "linux")]
+mod env;
+#[cfg(target_os = "linux")]
 mod locale;
 #[cfg(target_os = "linux")]
 mod passwd;
 #[cfg(target_os = "linux")]
+mod string;
+#[cfg(target_os = "linux")]
 pub mod sandbox;
-#[cfg(all(feature = "stdio-kernel", target_os = "linux"))]
+#[cfg(all(feature = "stdio-kernel", not(feature = "stdio-libc"), target_os = "linux"))]
 mod stdio_kernel;
 
 use core::alloc::{GlobalAlloc, Layout};

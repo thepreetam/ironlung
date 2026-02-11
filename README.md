@@ -53,10 +53,11 @@ LD_PRELOAD=./target/release/libironlung.so IRONLUNG_SANDBOX_PATH=./target/releas
 |--------|--------|
 | `sandbox` | getaddrinfo/freeaddrinfo run in a seccomp-contained helper process instead of delegating to libc in-process. |
 | `alloc-cache` | Per-thread free-list for one size class to reduce allocator contention (see [docs/ALLOCATOR.md](docs/ALLOCATOR.md)). |
-| `stdio-kernel` | Kernel-delegating `vprintf` (subset of specifiers, writes via `write(1, …)`); see [docs/STDIO_KERNEL.md](docs/STDIO_KERNEL.md). |
-| `stdio-kernel-fread-fwrite` | `fread`/`fwrite` use `fileno(stream)` + `read`/`write` syscalls (Linux). |
+| `stdio-kernel` | Kernel-delegating `vprintf` (subset of specifiers, writes via `write(1, …)`); see [docs/STDIO_KERNEL.md](docs/STDIO_KERNEL.md). **Default on.** |
+| `stdio-kernel-fread-fwrite` | `fread`/`fwrite` use `fileno(stream)` + `read`/`write` syscalls (Linux). **Default on.** |
+| `stdio-libc` | Force printf/fread/fwrite to delegate to libc (turns off kernel path when set). |
 
-Default build uses none of these; CI builds with `sandbox` only.
+Default build enables the kernel stdio path on Linux; CI builds with `sandbox` plus defaults.
 
 ## Test
 
@@ -80,6 +81,11 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 - **strcpy** — look-ahead safe copy with heuristic limit
 - **puts** — syscall-based write with `[IronLung]` tag
 
+### String and env (validate-then-delegate)
+- **memset** / **strcmp** / **strncpy** — size-bounded, delegate to libc
+- **snprintf** — format validation (reject %n), delegate to libc
+- **getenv** — name length limit, delegate to libc. See [docs/SUBSET.md](docs/SUBSET.md).
+
 ### Phase 1: Concurrency
 - **pthread_*** — delegates to system libc via dlsym(RTLD_NEXT)
 - Allocator documentation and benchmarks (`docs/ALLOCATOR.md`, `tests/alloc_bench.c`)
@@ -94,6 +100,7 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 ### Phase 3: Complex Services
 - **getaddrinfo** / **freeaddrinfo**
 - **iconv_open** / **iconv** / **iconv_close**
+- **wcslen** / **wcscpy** / **wcsncpy** / **wcscmp** — minimal wchar delegate
 - **getpwnam** / **crypt**
 
 ### Phase 4: Validation
@@ -104,9 +111,9 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 ## Gaps and limitations
 
 - **Critical subset only** — Not a full libc; many symbols are not implemented. Rely on [symbols.baseline](crates/ironlung-abi-check/symbols.baseline) and [docs/CI_ABI.md](docs/CI_ABI.md) for the export contract.
-- **No full glibc conformance guarantee** — Glibc test suite and heavy fuzz are optional/manual; CI does not gate on them.
+- **Glibc conformance** — Full glibc test suite runs on release (workflow fails if it fails), weekly schedule, and manual trigger; push CI does not gate on it.
 - **Optional kernel-delegating stdio** — Kernel-path printf and fread/fwrite are behind features (`stdio-kernel`, `stdio-kernel-fread-fwrite`); default is validate-then-delegate to libc.
-- **No wide char / full locale** — Beyond current iconv delegation; out of scope.
+- **Wide char** — Minimal wchar delegation (`wcslen`, `wcscpy`, `wcsncpy`, `wcscmp`); full locale out of scope.
 - **No allocator quarantine or shadow memory** — Out of scope for current plan.
 - **Sandbox and glibc CI** — Sandbox test and Glibc validation workflow are best-effort in CI (continue-on-error); run locally or manually when needed.
 
