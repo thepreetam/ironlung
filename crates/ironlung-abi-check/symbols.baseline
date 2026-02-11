@@ -39,6 +39,7 @@ pthread_mutex_unlock
 read
 realloc
 recv
+rust_eh_personality
 send
 socket
 strcpy

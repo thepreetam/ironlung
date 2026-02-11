@@ -77,3 +77,12 @@ int fprintf(FILE *stream, const char *format, ...) {
     va_end(ap);
     return r;
 }
+
+/* Referenced from Rust so the linker keeps printf/fprintf/vprintf in the cdylib. */
+void ironlung_printf_keep(void) {
+    (void)&printf;
+    (void)&fprintf;
+#ifndef STDIO_KERNEL
+    (void)&vprintf;
+#endif
+}
