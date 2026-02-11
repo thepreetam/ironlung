@@ -22,23 +22,23 @@ fn validate_format(fmt: *const c_char) -> bool {
     }
     let mut n = 0usize;
     while n < FORMAT_MAX {
-        let c = unsafe { *fmt.add(n) };
+        let c = unsafe { *fmt.add(n) as u8 };
         if c == 0 {
             return true;
         }
-        if c == b'%' as i8 {
+        if c == b'%' {
             n += 1;
             if n >= FORMAT_MAX {
                 return false;
             }
-            let c2 = unsafe { *fmt.add(n) };
+            let c2 = unsafe { *fmt.add(n) as u8 };
             if c2 == 0 {
                 return false;
             }
-            if c2 == b'n' as i8 {
+            if c2 == b'n' {
                 return false; /* reject %n */
             }
-            if c2 != b'%' as i8 {
+            if c2 != b'%' {
                 n += 1; /* skip width/precision */
                 continue;
             }
@@ -49,7 +49,7 @@ fn validate_format(fmt: *const c_char) -> bool {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vprintf(format: *const c_char, mut ap: libc::va_list) -> libc::c_int {
+pub unsafe extern "C" fn vprintf(format: *const c_char, ap: *mut c_void) -> libc::c_int {
     if format.is_null() || !validate_format(format) {
         return -1;
     }
@@ -57,24 +57,24 @@ pub unsafe extern "C" fn vprintf(format: *const c_char, mut ap: libc::va_list) -
     let mut i = 0usize;
     let mut n = 0usize;
     while n < FORMAT_MAX && i < OUT_MAX.saturating_sub(1) {
-        let c = *format.add(n);
+        let c = *format.add(n) as u8;
         if c == 0 {
             break;
         }
-        if c == b'%' as i8 {
+        if c == b'%' {
             n += 1;
             if n >= FORMAT_MAX {
                 break;
             }
-            let c2 = *format.add(n);
-            if c2 == b'%' as i8 {
+            let c2 = *format.add(n) as u8;
+            if c2 == b'%' {
                 buf[i] = b'%';
                 i += 1;
                 n += 1;
                 continue;
             }
-            if c2 == b's' as i8 {
-                let s = stdio_va_arg_s(&mut ap as *mut libc::va_list as *mut c_void);
+            if c2 == b's' {
+                let s = stdio_va_arg_s(ap);
                 n += 1;
                 if !s.is_null() {
                     let mut j = 0usize;
@@ -96,11 +96,11 @@ pub unsafe extern "C" fn vprintf(format: *const c_char, mut ap: libc::va_list) -
             n += 1;
             continue;
         }
-        buf[i] = c as u8;
+        buf[i] = c;
         i += 1;
         n += 1;
     }
-    stdio_va_end(&mut ap as *mut libc::va_list as *mut c_void);
+    stdio_va_end(ap);
     if i == 0 {
         return 0;
     }

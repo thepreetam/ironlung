@@ -27,13 +27,26 @@ fn main() {
         let status = cmd.status().expect("compile printf_shim.c");
         assert!(status.success(), "printf_shim.c compile failed");
 
-        // Link the .o via -Wl, so the linker sees it; force export via version script.
+        // Link the .o via -Wl, so the linker sees it; force export via a single version script.
+        // One script with IRONLUNG_1.0 (printf shim) + GLIBC_2.2.5 (all baseline) avoids "anonymous version tag" linker error.
         // See docs/CI_ABI.md for export contract; do not remove version script or link step.
         let obj_abs = std::fs::canonicalize(&obj).expect("canonicalize printf_shim.o");
-        let version_script = std::path::Path::new(&out_dir).join("printf_export.ver");
+        let baseline_path = std::path::Path::new(&manifest_dir).join("crates/ironlung-abi-check/symbols.baseline");
+        let baseline_content = std::fs::read_to_string(&baseline_path).unwrap_or_default();
+        let glibc_symbols: Vec<&str> = baseline_content
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        let glibc_body = glibc_symbols.iter().map(|s| format!("  {};", s)).collect::<Vec<_>>().join("\n");
+        let version_script = std::path::Path::new(&out_dir).join("ironlung.ver");
         std::fs::write(
             &version_script,
-            "IRONLUNG_1.0 { global: printf; fprintf; vprintf; snprintf; };\n",
+            format!(
+                "IRONLUNG_1.0 {{ global: printf; fprintf; vprintf; snprintf; }};\n\
+                 GLIBC_2.2.5 {{\n global:\n{}\n local: *;\n}};\n",
+                glibc_body
+            ),
         )
         .expect("write version script");
         let version_script_abs = std::fs::canonicalize(&version_script).expect("canonicalize .ver");
@@ -45,28 +58,6 @@ fn main() {
         println!(
             "cargo:rustc-link-arg=-Wl,--version-script={}",
             version_script_abs.display()
-        );
-
-        // GLIBC version aliases so binaries built against older glibc can bind to our .so (LD_PRELOAD).
-        // See docs/CI_ABI.md. Generated from symbols.baseline.
-        let baseline_path = std::path::Path::new(&manifest_dir).join("crates/ironlung-abi-check/symbols.baseline");
-        let baseline_content = std::fs::read_to_string(&baseline_path).unwrap_or_default();
-        let glibc_symbols: Vec<&str> = baseline_content
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .collect();
-        let glibc_ver = std::path::Path::new(&out_dir).join("glibc_aliases.ver");
-        let glibc_body = glibc_symbols.iter().map(|s| format!("  {};", s)).collect::<Vec<_>>().join("\n");
-        std::fs::write(
-            &glibc_ver,
-            format!("GLIBC_2.2.5 {{\n global:\n{};\n}};\n", glibc_body),
-        )
-        .expect("write glibc_aliases.ver");
-        let glibc_ver_abs = std::fs::canonicalize(&glibc_ver).expect("canonicalize glibc_aliases.ver");
-        println!(
-            "cargo:rustc-link-arg=-Wl,--version-script={}",
-            glibc_ver_abs.display()
         );
     }
 

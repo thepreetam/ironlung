@@ -113,7 +113,7 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 
 - **Critical subset only** — Not a full libc; many symbols are not implemented. Rely on [symbols.baseline](crates/ironlung-abi-check/symbols.baseline) and [docs/CI_ABI.md](docs/CI_ABI.md) for the export contract.
 - **Glibc conformance** — Full glibc test suite runs on release (workflow fails if it fails), weekly schedule, and manual trigger; push CI does not gate on it.
-- **Optional kernel-delegating stdio** — Kernel-path printf and fread/fwrite are behind features (`stdio-kernel`, `stdio-kernel-fread-fwrite`); default is validate-then-delegate to libc.
+- **Kernel stdio default** — On Linux, kernel-path printf and fread/fwrite are the default; use feature `stdio-libc` to force delegate to libc.
 - **Wide char** — Minimal wchar delegation (`wcslen`, `wcscpy`, `wcsncpy`, `wcscmp`); full locale out of scope.
 - **No allocator quarantine or shadow memory** — Design only; see [docs/ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md). Optional implementation out of scope for current plan.
 - **Sandbox and glibc CI** — Sandbox test and Glibc validation workflow are best-effort in CI (continue-on-error); run locally or manually when needed.
@@ -125,8 +125,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for future work and delegation 
 | Doc | Description |
 |-----|-------------|
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Delegation vs reimplementation, errno, ABI and types, future work |
-| [CI_ABI.md](docs/CI_ABI.md) | Cdylib export contract, printf export mechanism, optional layout check |
+| [CI_ABI.md](docs/CI_ABI.md) | Cdylib export contract, printf/version script, GLIBC version aliases, optional layout check |
 | [ALLOCATOR.md](docs/ALLOCATOR.md) | Talc allocator, per-thread cache (optional), benchmarks |
 | [SIGNAL_SAFETY.md](docs/SIGNAL_SAFETY.md) | Async-signal-safe set and tests |
 | [ERRNO.md](docs/ERRNO.md) | errno contract and tests |
-| [STDIO_KERNEL.md](docs/STDIO_KERNEL.md) | Kernel-delegating printf and fread/fwrite (optional features) |
+| [STDIO_KERNEL.md](docs/STDIO_KERNEL.md) | Kernel-delegating printf and fread/fwrite (default on Linux) |
+| [SUBSET.md](docs/SUBSET.md) | Curated symbol subset and next-tier process |
+| [ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md) | Quarantine/shadow design (not implemented) |
+| [PTHREAD_NATIVE.md](docs/PTHREAD_NATIVE.md) | Native pthread_create/join via clone3+futex (optional feature) |
+| [DISTRO_MATRIX.md](docs/DISTRO_MATRIX.md) | Target distros and CI integration |
+| [BENCHMARKS.md](docs/BENCHMARKS.md) | I/O and allocator benchmarks |

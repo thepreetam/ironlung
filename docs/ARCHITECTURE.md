@@ -53,8 +53,8 @@ Implemented in Rust; no kernel syscall for the operation itself (allocator uses 
 
 ## Future Work
 
-- **Kernel-delegating printf:** When feature `stdio-kernel` is on, `vprintf` is implemented in Rust (subset: `%%`, `%s`; others output `?`) and writes via `write(1, buf, len)`. See [docs/STDIO_KERNEL.md](STDIO_KERNEL.md). Full specifier set (e.g. `%d`, `%x`, `%p`) can be added later.
-- **Kernel-delegating fread/fwrite:** When feature `stdio-kernel-fread-fwrite` is on (Linux), `fread` and `fwrite` obtain the fd via delegated `fileno(stream)` and perform `read`/`write` syscalls with size validation and EINTR handling. See [docs/STDIO_KERNEL.md](STDIO_KERNEL.md).
+- **Kernel-delegating printf:** When feature `stdio-kernel` is on (default on Linux), `vprintf` is implemented in Rust (subset: `%%`, `%s`, `%d`, `%x`, `%p`, etc.) and writes via `write(1, buf, len)`. See [STDIO_KERNEL.md](STDIO_KERNEL.md). Full specifier set can be extended as needed.
+- **Kernel-delegating fread/fwrite:** When feature `stdio-kernel-fread-fwrite` is on (default on Linux), `fread` and `fwrite` obtain the fd via delegated `fileno(stream)` and perform `read`/`write` syscalls with size validation and EINTR handling. See [STDIO_KERNEL.md](STDIO_KERNEL.md).
 - **Per-thread allocator cache:** Reduce contention; fast path from thread-local free-list, slow path from global talc.
 
 ---
