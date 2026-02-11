@@ -28,7 +28,7 @@ jobs:
           - distro: rhel9
             image: redhat/ubi9
           - distro: fedora40
-            image: fedora:40
+            image: fedora:latest
           - distro: arch
             image: archlinux:latest
           - distro: alpine
@@ -37,20 +37,20 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ matrix.image }}
+      options: --user root
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: chmod +x scripts/ci-install-deps.sh && ./scripts/ci-install-deps.sh ${{ matrix.distro }}
 
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          . $HOME/.cargo/env
-
-      - name: Install build deps
-        run: chmod +x scripts/ci-install-deps.sh && ./scripts/ci-install-deps.sh ${{ matrix.distro }}
 
       - name: Build IronLung
         run: |

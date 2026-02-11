@@ -10,24 +10,22 @@ DISTRO="${1:-unknown}"
 
 case "$DISTRO" in
     centos7)
-        yum install -y gcc libseccomp-devel
+        yum install -y gcc libseccomp-devel curl ca-certificates
         ;;
     ubuntu1804|ubuntu2004|ubuntu2204)
-        apt-get update -qq
-        apt-get install -y -qq build-essential libseccomp-dev
+        apt-get update -qq && apt-get install -y -qq build-essential libseccomp-dev curl ca-certificates
         ;;
     debian11|debian12)
-        apt-get update -qq
-        apt-get install -y -qq build-essential libseccomp-dev
+        apt-get update -qq && apt-get install -y -qq build-essential libseccomp-dev curl ca-certificates
         ;;
     rockylinux9|rhel9)
         dnf install -y gcc libseccomp-devel curl tar gzip ca-certificates
         ;;
     fedora40)
-        dnf install -y gcc libseccomp-devel
+        dnf install -y gcc libseccomp-devel curl ca-certificates
         ;;
     arch)
-        pacman -Sy --noconfirm base-devel libseccomp
+        pacman -Sy --noconfirm base-devel libseccomp curl ca-certificates
         ;;
     alpine)
         apk add build-base libseccomp-dev curl ca-certificates
