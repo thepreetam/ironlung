@@ -4,23 +4,37 @@
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let workspace_so = Path::new(manifest_dir)
-        .join("../..")
-        .join("target/release/libironlung.so");
 
-    let so_path = args.get(1).map(|s| s.as_str()).filter(|p| Path::new(p).exists());
-    let so_path = so_path
-        .or_else(|| workspace_so.exists().then(|| workspace_so.to_str().unwrap()))
+    // Try: CLI arg, then cwd-relative (container workspace may differ from CARGO_MANIFEST_DIR)
+    let so_path = args
+        .get(1)
+        .filter(|p| Path::new(p.as_str()).exists())
+        .map(|s| PathBuf::from(s.as_str()))
+        .or_else(|| {
+            env::current_dir()
+                .ok()
+                .map(|cwd| cwd.join("target/release/libironlung.so"))
+                .filter(|p| p.exists())
+        })
+        .or_else(|| {
+            let p = Path::new(manifest_dir).join("../..").join("target/release/libironlung.so");
+            p.exists().then_some(PathBuf::from(p))
+        })
         .unwrap_or_else(|| {
-            eprintln!("error: libironlung.so not found (tried {:?} and {:?})", args.get(1), workspace_so);
+            eprintln!(
+                "error: libironlung.so not found (cwd {:?})",
+                env::current_dir()
+            );
             std::process::exit(1);
         });
+
+    let so_path = so_path.to_str().unwrap();
 
     let baseline_path = Path::new(manifest_dir).join("symbols.baseline");
     let baseline = fs::read_to_string(&baseline_path).unwrap_or_else(|e| {
