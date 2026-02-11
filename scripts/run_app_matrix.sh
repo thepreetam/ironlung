@@ -21,11 +21,11 @@ run_test() {
     echo -n "Testing $name... "
     if eval "$cmd" >/dev/null 2>&1; then
         echo "PASS"
-        ((PASS++)) || true
+        PASS=$((PASS + 1))
         return 0
     else
         echo "FAIL"
-        ((FAIL++)) || true
+        FAIL=$((FAIL + 1))
         return 1
     fi
 }
