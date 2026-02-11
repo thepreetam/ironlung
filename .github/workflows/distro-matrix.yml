@@ -102,4 +102,3 @@ jobs:
         run: |
           . $HOME/.cargo/env
           sh scripts/run_app_matrix.sh
-        continue-on-error: true
