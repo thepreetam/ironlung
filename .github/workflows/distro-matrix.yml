@@ -68,7 +68,7 @@ jobs:
         run: |
           . $HOME/.cargo/env
           export PATH="$HOME/.cargo/bin:$PATH"
-          ./scripts/test_sandbox.sh
+          sh scripts/test_sandbox.sh
 
       - name: ABI check
         run: |
@@ -94,5 +94,5 @@ jobs:
       - name: App matrix
         run: |
           . $HOME/.cargo/env
-          ./scripts/run_app_matrix.sh
+          sh scripts/run_app_matrix.sh
         continue-on-error: true
