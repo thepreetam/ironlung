@@ -73,8 +73,7 @@ jobs:
       - name: ABI check
         run: |
           . $HOME/.cargo/env
-          ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
-          cargo run -p ironlung-abi-check -- "$ROOT/target/release/libironlung.so"
+          cargo run -p ironlung-abi-check
 
       - name: I/O benchmark
         run: |

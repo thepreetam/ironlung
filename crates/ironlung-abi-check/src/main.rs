@@ -9,15 +9,20 @@ use std::process::Command;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let so_path = args.get(1).map(|s| s.as_str()).unwrap_or("target/release/libironlung.so");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let workspace_so = Path::new(manifest_dir)
+        .join("../..")
+        .join("target/release/libironlung.so");
 
-    let so = Path::new(so_path);
-    if !so.exists() {
-        eprintln!("error: {} not found", so_path);
-        std::process::exit(1);
-    }
+    let so_path = args.get(1).map(|s| s.as_str()).filter(|p| Path::new(p).exists());
+    let so_path = so_path
+        .or_else(|| workspace_so.exists().then(|| workspace_so.to_str().unwrap()))
+        .unwrap_or_else(|| {
+            eprintln!("error: libironlung.so not found (tried {:?} and {:?})", args.get(1), workspace_so);
+            std::process::exit(1);
+        });
 
-    let baseline_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("symbols.baseline");
+    let baseline_path = Path::new(manifest_dir).join("symbols.baseline");
     let baseline = fs::read_to_string(&baseline_path).unwrap_or_else(|e| {
         eprintln!("error: could not read {:?}: {}", baseline_path, e);
         std::process::exit(1);
