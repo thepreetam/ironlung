@@ -1,5 +1,6 @@
 //! ABI compliance check for libironlung.so.
 //! Compares exported symbols against symbols.baseline.
+//! With feature `layout-check`: can assert pthread_mutex_t size when IRONLUNG_LAYOUT_CHECK=1 (x86_64 Linux).
 
 use std::collections::HashSet;
 use std::env;
@@ -7,7 +8,27 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[cfg(all(feature = "layout-check", target_arch = "x86_64", target_os = "linux"))]
+fn run_layout_check() {
+    if env::var("IRONLUNG_LAYOUT_CHECK").is_ok() {
+        const EXPECTED_PTHREAD_MUTEX_T: usize = 40;
+        let actual = std::mem::size_of::<libc::pthread_mutex_t>();
+        if actual != EXPECTED_PTHREAD_MUTEX_T {
+            eprintln!(
+                "error: pthread_mutex_t size {} != {} (x86_64-unknown-linux-gnu); layout drift",
+                actual, EXPECTED_PTHREAD_MUTEX_T
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+#[cfg(not(all(feature = "layout-check", target_arch = "x86_64", target_os = "linux")))]
+fn run_layout_check() {}
+
 fn main() {
+    run_layout_check();
+
     let args: Vec<String> = env::args().collect();
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
 

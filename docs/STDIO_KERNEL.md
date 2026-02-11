@@ -27,3 +27,9 @@ When feature `stdio-kernel` is enabled, `vprintf` is implemented in Rust and del
 ## Buffer limits
 
 Output is capped at 4096 bytes per call to avoid stack overflow and unbounded allocation. Longer output is truncated (or split across multiple writes in a future revision).
+
+---
+
+## Kernel-delegating fread/fwrite (feature `stdio-kernel-fread-fwrite`)
+
+When this feature is enabled (and `target_os = "linux"`), `fread` and `fwrite` obtain the file descriptor from `FILE*` via delegated `fileno(stream)` and then perform `read`/`write` syscalls with the same size validation as the delegate path. Buffering is not reimplemented in IronLung; we only validate size/nmemb, get fd, and loop read/write with EINTR handling. If `fileno` fails (e.g. invalid stream), the implementation falls back to delegated fread/fwrite. This aligns with macro Phase 2: "delegate fread/fwrite directly to read/write syscalls."

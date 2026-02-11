@@ -11,6 +11,7 @@ default = []
 sandbox = []
 alloc-cache = []
 stdio-kernel = []
+stdio-kernel-fread-fwrite = []  # fread/fwrite via fileno + read/write syscalls
 
 [lib]
 crate-type = ["cdylib", "rlib"]

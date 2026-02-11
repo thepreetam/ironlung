@@ -26,6 +26,7 @@ fn main() {
         assert!(status.success(), "printf_shim.c compile failed");
 
         // Link the .o via -Wl, so the linker sees it; force export via version script.
+        // See docs/CI_ABI.md for export contract; do not remove version script or link step.
         let obj_abs = std::fs::canonicalize(&obj).expect("canonicalize printf_shim.o");
         let version_script = std::path::Path::new(&out_dir).join("printf_export.ver");
         std::fs::write(

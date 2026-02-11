@@ -8,3 +8,8 @@ name = "ironlung-abi-check"
 path = "src/main.rs"
 
 [dependencies]
+libc = { version = "0.2", default-features = false, optional = true }
+
+[features]
+default = []
+layout-check = ["libc"]

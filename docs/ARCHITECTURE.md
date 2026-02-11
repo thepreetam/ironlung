@@ -51,6 +51,7 @@ Implemented in Rust; no kernel syscall for the operation itself (allocator uses 
 ## Future Work
 
 - **Kernel-delegating printf:** When feature `stdio-kernel` is on, `vprintf` is implemented in Rust (subset: `%%`, `%s`; others output `?`) and writes via `write(1, buf, len)`. See [docs/STDIO_KERNEL.md](STDIO_KERNEL.md). Full specifier set (e.g. `%d`, `%x`, `%p`) can be added later.
+- **Kernel-delegating fread/fwrite:** When feature `stdio-kernel-fread-fwrite` is on (Linux), `fread` and `fwrite` obtain the fd via delegated `fileno(stream)` and perform `read`/`write` syscalls with size validation and EINTR handling. See [docs/STDIO_KERNEL.md](STDIO_KERNEL.md).
 - **Per-thread allocator cache:** Reduce contention; fast path from thread-local free-list, slow path from global talc.
 
 ---
@@ -61,4 +62,6 @@ Error paths set `errno` so callers see glibc-compatible values. Syscall paths se
 
 ## ABI and Types
 
-ABI compatibility relies on the `libc` crate and system headers at build time. Critical types (e.g. `FILE*`, `pthread_mutex_t`, `addrinfo`) come from the `libc` crate. Layout changes across distros would require a bindgen pipeline or vendored headers; not currently done. To detect layout drift, add a compile-time or runtime assertion (e.g. `core::mem::size_of::<libc::pthread_mutex_t>() == expected`) for the default target (x86_64-unknown-linux-gnu) if desired.
+ABI compatibility relies on the `libc` crate and system headers at build time. Critical types include `FILE*`, `pthread_mutex_t`, `pthread_cond_t`, `addrinfo`, and other structs used by delegated or kernel-delegating code. Layout changes across distros would require a bindgen pipeline or vendored headers; not currently done. A bindgen/header-scraping pipeline could be added later for stricter per-distro layout checks.
+
+To detect layout drift on the default target (x86_64-unknown-linux-gnu), run the ABI check with the optional layout assertion: build `ironlung-abi-check` with the `layout-check` feature and set `IRONLUNG_LAYOUT_CHECK=1` when running it; it will assert `size_of::<libc::pthread_mutex_t>()` against a pinned value and exit with an error if the layout has drifted. See [docs/CI_ABI.md](CI_ABI.md) for the cdylib export contract.

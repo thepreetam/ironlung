@@ -1,0 +1,48 @@
+# Optional: run glibc test suite with LD_PRELOAD=libironlung.so.
+# Trigger manually via workflow_dispatch. Does not block main pipeline.
+name: Glibc validation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  glibc:
+    name: glibc tests (LD_PRELOAD)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install glibc build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential gettext python3 libc6-dev
+
+      - name: Build IronLung
+        run: |
+          . $HOME/.cargo/env
+          cargo build --release -p ironlung
+
+      - name: Clone and build glibc
+        run: |
+          git clone --depth 1 https://sourceware.org/git/glibc.git glibc_src
+          cd glibc_src
+          git fetch --depth 1 origin glibc-2.39
+          git checkout glibc-2.39
+          mkdir -p build && cd build
+          ../configure --prefix=/usr --enable-werror=no
+          make -j$(nproc)
+          echo "GLIBC_BUILD=${{ github.workspace }}/glibc_src/build" >> $GITHUB_ENV
+
+      - name: Run glibc tests with LD_PRELOAD
+        run: |
+          . $HOME/.cargo/env
+          sh scripts/run_glibc_tests.sh "$GLIBC_BUILD"
+    continue-on-error: true

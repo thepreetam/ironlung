@@ -1,5 +1,6 @@
 //! FILE* and basic stdio: fopen, fclose, fread, fwrite, fgets.
 //! Delegates to system libc via dlsym(RTLD_NEXT) with input validation.
+//! With feature stdio-kernel-fread-fwrite (Linux): fread/fwrite use fileno + read/write syscalls.
 
 use core::ffi::c_void;
 use core::sync::atomic::AtomicPtr;
@@ -11,12 +12,15 @@ type FcloseFn = unsafe extern "C" fn(*mut libc::c_void) -> libc::c_int;
 type FreadFn = unsafe extern "C" fn(*mut c_void, libc::size_t, libc::size_t, *mut libc::c_void) -> libc::size_t;
 type FwriteFn = unsafe extern "C" fn(*const c_void, libc::size_t, libc::size_t, *mut libc::c_void) -> libc::size_t;
 type FgetsFn = unsafe extern "C" fn(*mut libc::c_char, libc::c_int, *mut libc::c_void) -> *mut libc::c_char;
+type FilenoFn = unsafe extern "C" fn(*mut libc::c_void) -> libc::c_int;
 
 static FOPEN: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 static FCLOSE: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 static FREAD: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 static FWRITE: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 static FGETS: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
+#[cfg(all(feature = "stdio-kernel-fread-fwrite", target_os = "linux"))]
+static FILENO: AtomicPtr<c_void> = AtomicPtr::new(core::ptr::null_mut());
 
 const MAX_SIZE: usize = 1_000_000_000;
 
@@ -56,9 +60,35 @@ pub unsafe extern "C" fn fread(
     if ptr.is_null() || stream.is_null() || size == 0 {
         return 0;
     }
-    if size > MAX_SIZE || nmemb > MAX_SIZE || size.checked_mul(nmemb).is_none() {
-        return 0;
+    let total = match size.checked_mul(nmemb) {
+        Some(t) if t <= MAX_SIZE => t,
+        _ => return 0,
+    };
+
+    #[cfg(all(feature = "stdio-kernel-fread-fwrite", target_os = "linux"))]
+    {
+        let fileno_ptr = cache::resolve(b"fileno\0", &FILENO);
+        if !fileno_ptr.is_null() {
+            let fileno_fn: FilenoFn = core::mem::transmute(fileno_ptr);
+            let fd = fileno_fn(stream);
+            if fd >= 0 {
+                let mut offset: libc::size_t = 0;
+                while offset < total {
+                    let buf = (ptr as *mut u8).add(offset) as *mut c_void;
+                    let n = crate::posix::read(fd, buf, total - offset);
+                    if n < 0 {
+                        return offset / size;
+                    }
+                    if n == 0 {
+                        break;
+                    }
+                    offset += n as libc::size_t;
+                }
+                return offset / size;
+            }
+        }
     }
+
     let f = cache::resolve(b"fread\0", &FREAD);
     if f.is_null() {
         return 0;
@@ -77,9 +107,32 @@ pub unsafe extern "C" fn fwrite(
     if ptr.is_null() || stream.is_null() || size == 0 {
         return 0;
     }
-    if size > MAX_SIZE || nmemb > MAX_SIZE || size.checked_mul(nmemb).is_none() {
-        return 0;
+    let total = match size.checked_mul(nmemb) {
+        Some(t) if t <= MAX_SIZE => t,
+        _ => return 0,
+    };
+
+    #[cfg(all(feature = "stdio-kernel-fread-fwrite", target_os = "linux"))]
+    {
+        let fileno_ptr = cache::resolve(b"fileno\0", &FILENO);
+        if !fileno_ptr.is_null() {
+            let fileno_fn: FilenoFn = core::mem::transmute(fileno_ptr);
+            let fd = fileno_fn(stream);
+            if fd >= 0 {
+                let mut offset: libc::size_t = 0;
+                while offset < total {
+                    let buf = (ptr as *const u8).add(offset) as *const c_void;
+                    let n = crate::posix::write(fd, buf, total - offset);
+                    if n < 0 {
+                        return offset / size;
+                    }
+                    offset += n as libc::size_t;
+                }
+                return nmemb;
+            }
+        }
     }
+
     let f = cache::resolve(b"fwrite\0", &FWRITE);
     if f.is_null() {
         return 0;

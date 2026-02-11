@@ -39,6 +39,9 @@ dependencies = [
 [[package]]
 name = "ironlung-abi-check"
 version = "0.1.0"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "ironlung-protocol"
