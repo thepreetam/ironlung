@@ -26,20 +26,12 @@ fn main() {
         let status = cmd.status().expect("compile printf_shim.c");
         assert!(status.success(), "printf_shim.c compile failed");
 
-        let ar_status = std::process::Command::new("ar")
-            .args(["cr", lib.to_str().unwrap(), obj.to_str().unwrap()])
-            .status()
-            .expect("ar failed");
-        assert!(ar_status.success(), "ar failed");
-
-        println!("cargo:rustc-link-search=native={}", out_dir);
-        // Force linker to pull in printf/fprintf/vprintf from the static lib (needed on some distros).
+        // Link the .o directly (absolute path) so the linker always pulls in printf/fprintf/vprintf.
+        let obj_abs = std::fs::canonicalize(&obj).expect("canonicalize printf_shim.o");
         println!("cargo:rustc-link-arg=-Wl,-u,printf");
         println!("cargo:rustc-link-arg=-Wl,-u,fprintf");
         println!("cargo:rustc-link-arg=-Wl,-u,vprintf");
-        println!("cargo:rustc-link-arg=-Wl,--whole-archive");
-        println!("cargo:rustc-link-lib=static=printf_shim");
-        println!("cargo:rustc-link-arg=-Wl,--no-whole-archive");
+        println!("cargo:rustc-link-arg={}", obj_abs.display());
     }
 
     if std::env::var_os("CARGO_FEATURE_ALLOC_CACHE").is_some() {
