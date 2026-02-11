@@ -62,24 +62,38 @@ fn main() {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let actual: HashSet<&str> = stdout
+    let actual: HashSet<String> = stdout
         .lines()
         .filter_map(|line| {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 3 {
                 let ty = parts[1];
                 if ["T", "D", "B", "R", "W"].contains(&ty) {
-                    return Some(parts[2]);
+                    return Some(parts[2].to_string());
                 }
             }
             None
         })
         .collect();
 
-    let mut missing: Vec<&str> = expected.difference(&actual).copied().collect();
+    // Baseline symbol E is "found" if actual has E or a versioned form (e.g. printf@@GLIBC_2.2.5).
+    let matches_baseline = |e: &str| {
+        actual.contains(e)
+            || actual.iter().any(|a| {
+                a.starts_with(e)
+                    && (a.len() == e.len() || a.as_bytes().get(e.len()) == Some(&b'@'))
+            })
+    };
+    let mut missing: Vec<&str> = expected.iter().filter(|e| !matches_baseline(e)).copied().collect();
     missing.sort();
 
-    let mut unexpected: Vec<&str> = actual.difference(&expected).copied().collect();
+    // Unexpected = actual symbols not covered by any baseline (exact or versioned).
+    let covered = |a: &str| {
+        expected.iter().any(|e| {
+            a == *e || (a.starts_with(e) && (a.len() == e.len() || a.as_bytes().get(e.len()) == Some(&b'@')))
+        })
+    };
+    let mut unexpected: Vec<String> = actual.iter().filter(|a| !covered(a)).cloned().collect();
     unexpected.sort();
 
     let mut failed = false;

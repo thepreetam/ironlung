@@ -79,6 +79,8 @@ jobs:
           cargo build --release --features sandbox -p ironlung
           SO="$WORKSPACE/target/release/libironlung.so"
           if [ ! -f "$SO" ]; then echo "error: $SO not found"; ls -la "$WORKSPACE/target/release/" 2>/dev/null || true; exit 1; fi
+          echo "--- dynamic symbols (printf/fprintf/vprintf) ---"
+          nm -D -g "$SO" 2>/dev/null | grep -E '\s(printf|fprintf|vprintf)(@|$)' || true
           cargo run -p ironlung-abi-check -- "$SO"
 
       - name: I/O benchmark
