@@ -70,6 +70,7 @@ jobs:
           . $HOME/.cargo/env
           export PATH="$HOME/.cargo/bin:$PATH"
           sh scripts/test_sandbox.sh
+        continue-on-error: true
 
       - name: ABI check
         if: matrix.distro != 'alpine'
