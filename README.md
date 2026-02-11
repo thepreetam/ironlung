@@ -108,7 +108,8 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 ### Phase 4: Validation
 - **CI (smoke):** Distro matrix (build, smoke test, ABI check, app matrix), plus doppelgänger fuzz job (best-effort).
 - **Full validation (manual):** Run `scripts/run_glibc_tests.sh [glibc_build_dir]` with a built glibc tree for conformance; run `scripts/doppelganger_fuzz.py` locally for more iterations. Optionally trigger the **Glibc validation** workflow from the Actions tab (workflow_dispatch) to run the glibc test suite in CI (best-effort, continue-on-error).
-- Scripts: `scripts/run_glibc_tests.sh`, `scripts/run_app_matrix.sh`, `scripts/doppelganger_fuzz.py`.
+- **1M fuzz on a VPS (for launch/graph):** On a cheap Linux VPS, build then run: `nohup ./scripts/run_fuzz_vps.sh > fuzz_out.txt 2>&1 &`. Logs `fuzz_log.csv` (iteration, crashes, timestamp) for a “1 Million Fuzz Iterations / 0 Crashes” graph. `python3 scripts/doppelganger_fuzz.py --iterations 1000000 --progress-every 10000 --csv fuzz_log.csv` does the same in the foreground.
+- Scripts: `scripts/run_glibc_tests.sh`, `scripts/run_app_matrix.sh`, `scripts/doppelganger_fuzz.py`, `scripts/run_fuzz_vps.sh`.
 
 ## Gaps and limitations
 
