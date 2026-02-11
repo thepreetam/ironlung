@@ -73,7 +73,9 @@ jobs:
       - name: ABI check
         run: |
           . $HOME/.cargo/env
-          cargo run -p ironlung-abi-check
+          SO="$(find . -name 'libironlung.so' -type f 2>/dev/null | head -1)"
+          if [ -z "$SO" ]; then echo "error: libironlung.so not found"; exit 1; fi
+          cargo run -p ironlung-abi-check -- "$SO"
 
       - name: I/O benchmark
         run: |
