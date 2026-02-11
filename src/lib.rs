@@ -90,6 +90,12 @@ fn ensure_allocator_init() {
 #[global_allocator]
 static GLOBAL: Talck<spin::Mutex<()>, MmapOom> = Talck::new(Talc::new(MmapOom));
 
+#[cfg(all(target_os = "linux", not(test)))]
+#[no_mangle]
+pub extern "C" fn rust_eh_personality() {
+    // Stub for cdylib; with panic=abort this is never called.
+}
+
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
