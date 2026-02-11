@@ -13,7 +13,12 @@ fn main() {
             .file(&src)
             .get_compiler();
         let mut cmd = compiler.to_command();
-        cmd.arg("-c").arg("-fPIC").arg(&src).arg("-o").arg(&obj);
+        cmd.arg("-c")
+            .arg("-fPIC")
+            .arg("-fvisibility=default")
+            .arg(&src)
+            .arg("-o")
+            .arg(&obj);
         if std::env::var_os("CARGO_FEATURE_STDIO_KERNEL").is_some() {
             cmd.arg("-DSTDIO_KERNEL");
         }
@@ -28,6 +33,10 @@ fn main() {
         assert!(ar_status.success(), "ar failed");
 
         println!("cargo:rustc-link-search=native={}", out_dir);
+        // Force linker to pull in printf/fprintf/vprintf from the static lib (needed on some distros).
+        println!("cargo:rustc-link-arg=-Wl,-u,printf");
+        println!("cargo:rustc-link-arg=-Wl,-u,fprintf");
+        println!("cargo:rustc-link-arg=-Wl,-u,vprintf");
         println!("cargo:rustc-link-arg=-Wl,--whole-archive");
         println!("cargo:rustc-link-lib=static=printf_shim");
         println!("cargo:rustc-link-arg=-Wl,--no-whole-archive");
