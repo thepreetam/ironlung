@@ -7,14 +7,15 @@ version = "1.0.0"
 edition = "2021"
 
 [features]
-default = ["stdio-kernel", "stdio-kernel-fread-fwrite", "alloc-quarantine"]
+default = ["alloc-cache", "stdio-libc"]
 sandbox = []
 alloc-cache = []
 alloc-quarantine = []   # delay reuse of freed blocks (UAF mitigation); FIFO, cap by count and bytes
+alloc-mimalloc = []     # use mimalloc as backend allocator (high scalability)
 stdio-kernel = []           # kernel-delegating vprintf (no-op on non-Linux)
 stdio-kernel-fread-fwrite = []  # fread/fwrite via fileno + read/write (no-op on non-Linux)
 stdio-libc = []             # force delegate printf/fread/fwrite to libc (disables kernel path when set)
-pthread-native = []         # Linux: pthread_create/join via clone3+futex (no libc); mutex/cond still delegated
+hosted-test = ["std"]       # Enable std for hosted testing
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -37,3 +38,4 @@ talc = { version = "4.4", default-features = false, features = ["lock_api"] }
 libc = { version = "0.2", default-features = false }
 spin = "0.9"
 ironlung-protocol = { path = "crates/ironlung-protocol" }
+mimalloc = { version = "0.1", optional = true }

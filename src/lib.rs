@@ -1,7 +1,7 @@
 //! IronLung: A no_std Rust shared object acting as a partial libc replacement.
 //! "Trust No Pointer, Verify Every Byte, Delegate to the Kernel."
 
-#![no_std]
+#![cfg_attr(not(feature = "hosted-test"), no_std)]
 #![allow(unused_imports)]
 
 #[cfg(target_os = "linux")]
@@ -10,8 +10,6 @@ mod cache;
 mod errno;
 #[cfg(target_os = "linux")]
 mod pthread;
-#[cfg(all(target_os = "linux", feature = "pthread-native"))]
-mod pthread_native;
 #[cfg(target_os = "linux")]
 mod stdio;
 #[cfg(target_os = "linux")]
@@ -33,6 +31,9 @@ pub mod sandbox;
 #[cfg(all(feature = "stdio-kernel", not(feature = "stdio-libc"), target_os = "linux"))]
 mod stdio_kernel;
 
+#[cfg(feature = "hosted-test")]
+mod tests;
+
 use core::alloc::{GlobalAlloc, Layout};
 use core::panic::PanicInfo;
 
@@ -43,7 +44,6 @@ use sc::nr::EXIT_GROUP;
 #[cfg(not(target_os = "linux"))]
 use sc::nr::EXIT;
 use sc::syscall;
-use talc::{Span, Talc, Talck};
 
 // Linux mmap constants
 const MAP_ANONYMOUS: i32 = 0x20;
@@ -55,48 +55,100 @@ const PAGE_SIZE: usize = 4096;
 /// Bootstrap heap - talc needs initial memory for metadata.
 static mut HEAP: [u8; PAGE_SIZE * 64] = [0; PAGE_SIZE * 64];
 
-/// Syscall-based OOM handler: requests memory via mmap when allocator runs out.
-struct MmapOom;
-
-impl talc::OomHandler for MmapOom {
-    fn handle_oom(talc: &mut Talc<Self>, _layout: Layout) -> Result<(), ()> {
-        let size = PAGE_SIZE * 16;
-        let ret = unsafe {
-            syscall!(
-                MMAP,
-                0usize,
-                size,
-                (PROT_READ | PROT_WRITE) as usize,
-                (MAP_PRIVATE | MAP_ANONYMOUS) as usize,
-                usize::MAX,
-                0usize
-            )
-        };
-        if ret as isize <= 0 {
-            return Err(());
+// Talc-based allocator (default)
+#[cfg(not(feature = "alloc-mimalloc"))]
+mod alloc_backend {
+    use super::*;
+    use talc::{Span, Talc, Talck};
+    
+    /// Syscall-based OOM handler: requests memory via mmap when allocator runs out.
+    pub struct MmapOom;
+    
+    impl talc::OomHandler for MmapOom {
+        fn handle_oom(talc: &mut Talc<Self>, _layout: Layout) -> Result<(), ()> {
+            let size = PAGE_SIZE * 16;
+            let ret = unsafe {
+                sc::syscall!(
+                    MMAP,
+                    0usize,
+                    size,
+                    (PROT_READ | PROT_WRITE) as usize,
+                    (MAP_PRIVATE | MAP_ANONYMOUS) as usize,
+                    usize::MAX,
+                    0usize
+                )
+            };
+            if ret as isize <= 0 {
+                return Err(());
+            }
+            let span = Span::from_base_size(ret as *mut u8, size);
+            unsafe { talc.claim(span).map(|_| ()).map_err(|_| ()) }
         }
-        let span = Span::from_base_size(ret as *mut u8, size);
-        unsafe { talc.claim(span).map(|_| ()).map_err(|_| ()) }
     }
-}
-
-static ALLOC_INIT: spin::Once = spin::Once::new();
-
-fn ensure_allocator_init() {
-    ALLOC_INIT.call_once(|| {
+    
+    static ALLOC_INIT: spin::Once = spin::Once::new();
+    
+    pub fn ensure_allocator_init() {
+        ALLOC_INIT.call_once(|| {
+            let mut talc = GLOBAL.lock();
+            let span = Span::from_base_size(
+                core::ptr::addr_of_mut!(HEAP) as *mut u8,
+                core::mem::size_of::<[u8; PAGE_SIZE * 64]>(),
+            );
+            unsafe {
+                let _ = talc.claim(span);
+            }
+        });
+    }
+    
+    pub unsafe fn alloc(layout: Layout) -> *mut u8 {
+        ensure_allocator_init();
         let mut talc = GLOBAL.lock();
-        let span = Span::from_base_size(
-            core::ptr::addr_of_mut!(HEAP) as *mut u8,
-            core::mem::size_of::<[u8; PAGE_SIZE * 64]>(),
-        );
-        unsafe {
-            let _ = talc.claim(span);
-        }
-    });
+        talc.alloc(layout)
+    }
+    
+    pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
+        ensure_allocator_init();
+        let mut talc = GLOBAL.lock();
+        talc.dealloc(ptr, layout)
+    }
+    
+    pub unsafe fn realloc(ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        ensure_allocator_init();
+        let mut talc = GLOBAL.lock();
+        talc.realloc(ptr, layout, new_size)
+    }
+    
+    #[global_allocator]
+    static GLOBAL: Talck<spin::Mutex<()>, MmapOom> = Talck::new(Talc::new(MmapOom));
 }
 
-#[global_allocator]
-static GLOBAL: Talck<spin::Mutex<()>, MmapOom> = Talck::new(Talc::new(MmapOom));
+// Mimalloc-based allocator (high scalability)
+#[cfg(feature = "alloc-mimalloc")]
+mod alloc_backend {
+    use super::*;
+    
+    pub fn ensure_allocator_init() {
+        // Mimalloc initializes automatically
+    }
+    
+    pub unsafe fn alloc(layout: Layout) -> *mut u8 {
+        GLOBAL.alloc(layout)
+    }
+    
+    pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
+        GLOBAL.dealloc(ptr, layout)
+    }
+    
+    pub unsafe fn realloc(ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        GLOBAL.realloc(ptr, layout, new_size)
+    }
+    
+    #[global_allocator]
+    static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+}
+
+use alloc_backend::{alloc, dealloc, realloc};
 
 #[cfg(not(test))]
 #[no_mangle]
@@ -116,6 +168,12 @@ static KEEP_PRINTF_SHIM: unsafe extern "C" fn() = ironlung_printf_keep;
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
+    // Flush stdout buffers before panic
+    #[cfg(all(feature = "stdio-kernel", not(feature = "stdio-libc"), target_os = "linux"))]
+    unsafe {
+        crate::stdio_kernel::flush_all_buffers();
+    }
+    
     unsafe {
         let msg = b"IronLung Panic: Memory Safety Violation Detected. Terminating.\n";
         let _ = syscall!(WRITE, 2i32 as usize, msg.as_ptr() as usize, msg.len());
@@ -130,98 +188,25 @@ fn panic(_info: &PanicInfo) -> ! {
 // ============== Memory Allocator Interceptors ==============
 const MALLOC_HEADER: usize = core::mem::size_of::<usize>();
 
-/// Size class for per-thread cache (feature alloc-cache). Must match refill layout.
+/// Size classes for per-thread cache (feature alloc-cache).
 #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
-const CACHE_SIZE_CLASS: usize = 64;
+const CACHE_SIZE_CLASSES: [usize; 4] = [32, 64, 128, 256];
+
+#[cfg(all(feature = "alloc-cache", target_os = "linux"))]
+fn is_cacheable_size(size: usize) -> bool {
+    size <= CACHE_SIZE_CLASSES[3] // Check if size <= largest cacheable size (256)
+}
 
 #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
 extern "C" {
     fn alloc_cache_pop(out: *mut *mut u8) -> libc::c_int;
     fn alloc_cache_push(p: *mut u8) -> libc::c_int;
+    fn alloc_cache_push_with_size(p: *mut u8, size: libc::size_t) -> libc::c_int;
 }
 
 // ---------- Quarantine (feature alloc-quarantine): delay reuse for UAF mitigation ----------
 #[cfg(feature = "alloc-quarantine")]
-const QUARANTINE_MAX_ENTRIES: usize = 256;
-#[cfg(feature = "alloc-quarantine")]
-const QUARANTINE_BYTES_CAP: usize = PAGE_SIZE * 128; // 512 KiB total quarantined
-
-#[cfg(feature = "alloc-quarantine")]
-struct QuarantineState {
-    ptrs: [*mut u8; QUARANTINE_MAX_ENTRIES],
-    sizes: [usize; QUARANTINE_MAX_ENTRIES],
-    head: usize,
-    len: usize,
-    total_bytes: usize,
-}
-#[cfg(feature = "alloc-quarantine")]
-unsafe impl Send for QuarantineState {}
-
-#[cfg(feature = "alloc-quarantine")]
-static QUARANTINE: spin::Mutex<QuarantineState> = spin::Mutex::new(QuarantineState {
-    ptrs: [core::ptr::null_mut(); QUARANTINE_MAX_ENTRIES],
-    sizes: [0; QUARANTINE_MAX_ENTRIES],
-    head: 0,
-    len: 0,
-    total_bytes: 0,
-});
-
-#[cfg(feature = "alloc-quarantine")]
-fn quarantine_push_and_maybe_drain(header_ptr: *mut u8, size: usize) {
-    let layout = Layout::from_size_align(size + MALLOC_HEADER, core::mem::align_of::<usize>()).unwrap();
-    let mut q = QUARANTINE.lock();
-    while q.len >= QUARANTINE_MAX_ENTRIES || q.total_bytes + size > QUARANTINE_BYTES_CAP {
-        if q.len == 0 {
-            break;
-        }
-        let head = q.head;
-        let old_ptr = q.ptrs[head];
-        let old_size = q.sizes[head];
-        q.ptrs[head] = core::ptr::null_mut();
-        q.sizes[head] = 0;
-        q.head = (head + 1) % QUARANTINE_MAX_ENTRIES;
-        q.len -= 1;
-        q.total_bytes -= old_size;
-        drop(q);
-        unsafe { GLOBAL.dealloc(old_ptr, Layout::from_size_align(old_size + MALLOC_HEADER, core::mem::align_of::<usize>()).unwrap()) };
-        q = QUARANTINE.lock();
-    }
-    if q.len < QUARANTINE_MAX_ENTRIES && q.total_bytes + size <= QUARANTINE_BYTES_CAP {
-        let idx = (q.head + q.len) % QUARANTINE_MAX_ENTRIES;
-        q.ptrs[idx] = header_ptr;
-        q.sizes[idx] = size;
-        q.len += 1;
-        q.total_bytes += size;
-    } else {
-        drop(q);
-        unsafe { GLOBAL.dealloc(header_ptr, layout) };
-    }
-}
-
-#[cfg(feature = "alloc-quarantine")]
-fn quarantine_drain_one() -> bool {
-    let (old_ptr, layout) = {
-        let mut q = QUARANTINE.lock();
-        if q.len == 0 {
-            return false;
-        }
-        let head = q.head;
-        let old_ptr = q.ptrs[head];
-        let old_size = q.sizes[head];
-        q.ptrs[head] = core::ptr::null_mut();
-        q.sizes[head] = 0;
-        q.head = (head + 1) % QUARANTINE_MAX_ENTRIES;
-        q.len -= 1;
-        q.total_bytes -= old_size;
-        (old_ptr, Layout::from_size_align(old_size + MALLOC_HEADER, core::mem::align_of::<usize>()).unwrap())
-    };
-    if !old_ptr.is_null() {
-        unsafe { GLOBAL.dealloc(old_ptr, layout) };
-        true
-    } else {
-        false
-    }
-}
+mod quarantine;
 
 #[no_mangle]
 pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
@@ -238,7 +223,7 @@ pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
     };
 
     #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
-    if size == CACHE_SIZE_CLASS {
+    if is_cacheable_size(size) {
         let mut out = core::ptr::null_mut::<u8>();
         if alloc_cache_pop(&mut out) != 0 && !out.is_null() {
             core::ptr::write(out as *mut usize, size);
@@ -246,15 +231,14 @@ pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
         }
     }
 
-    ensure_allocator_init();
     #[allow(unused_mut)]
-    let mut ptr = GLOBAL.alloc(layout);
+    let mut ptr = unsafe { alloc(layout) };
     #[cfg(feature = "alloc-quarantine")]
     {
         let mut drained = 0;
-        while ptr.is_null() && drained < 8 && quarantine_drain_one() {
+        while ptr.is_null() && drained < 8 && crate::quarantine::quarantine_drain_one() {
             drained += 1;
-            ptr = GLOBAL.alloc(layout);
+            ptr = unsafe { alloc(layout) };
         }
     }
     if ptr.is_null() {
@@ -274,18 +258,18 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
     let size = core::ptr::read(header_ptr as *const usize);
 
     #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
-    if size == CACHE_SIZE_CLASS && alloc_cache_push(header_ptr) != 0 {
+    if is_cacheable_size(size) && alloc_cache_push_with_size(header_ptr, size) != 0 {
         return;
     }
 
     #[cfg(feature = "alloc-quarantine")]
-    quarantine_push_and_maybe_drain(header_ptr, size);
+    crate::quarantine::quarantine_push(header_ptr, size);
 
     #[cfg(not(feature = "alloc-quarantine"))]
     {
         let total = size.checked_add(MALLOC_HEADER).unwrap();
         let layout = Layout::from_size_align(total, core::mem::align_of::<usize>()).unwrap();
-        GLOBAL.dealloc(header_ptr, layout);
+        unsafe { dealloc(header_ptr, layout) };
     }
 }
 
@@ -307,7 +291,7 @@ pub unsafe extern "C" fn realloc(ptr: *mut c_void, size: size_t) -> *mut c_void 
         return core::ptr::null_mut();
     }
     let _new_layout = Layout::from_size_align(new_total, core::mem::align_of::<usize>()).unwrap();
-    let new_ptr = GLOBAL.realloc(header_ptr, old_layout, new_total);
+    let new_ptr = unsafe { realloc(header_ptr, old_layout, new_total) };
     if new_ptr.is_null() {
         core::ptr::null_mut()
     } else {

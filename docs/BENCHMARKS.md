@@ -28,11 +28,28 @@ gcc -O2 -lpthread -o alloc_bench tests/alloc_bench.c
 # Baseline (glibc malloc)
 ./alloc_bench 100000 4
 
-# IronLung (talc allocator)
+# IronLung default (talc with per-thread cache)
 LD_PRELOAD=./target/release/libironlung.so ./alloc_bench 100000 4
+
+# IronLung with mimalloc backend
+LD_PRELOAD=./target/release/libironlung.so ./alloc_bench 100000 4
+
+# Concurrent stress test
+gcc -O2 -lpthread -o concurrent_alloc tests/concurrent_alloc.c
+LD_PRELOAD=./target/release/libironlung.so ./concurrent_alloc 16 10000 1024
 ```
 
-IronLung uses a custom talc-based allocator; throughput differs from glibc. Re-run after allocator changes to check for regressions.
+IronLung offers multiple allocator backends:
+- **Default**: talc with per‑thread cache (32‑256 byte size classes)
+- **mimalloc**: High‑scalability backend (`--features alloc-mimalloc`)
+- **Quarantine**: UAF mitigation with per‑thread ring buffer (`--features alloc-quarantine`)
+
+Performance characteristics:
+- **Default**: Good single‑thread performance, moderate scalability
+- **mimalloc**: Excellent scalability for high‑concurrency workloads
+- **Quarantine**: ~10‑20% overhead for UAF protection
+
+Re-run after allocator changes to check for regressions.
 
 ## Hot Paths Using Direct Syscalls
 

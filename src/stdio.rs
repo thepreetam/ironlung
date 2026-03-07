@@ -119,6 +119,18 @@ pub unsafe extern "C" fn fwrite(
             let fileno_fn: FilenoFn = core::mem::transmute(fileno_ptr);
             let fd = fileno_fn(stream);
             if fd >= 0 {
+                // Use buffered write for stdout (fd = 1)
+                if fd == 1 {
+                    use core::slice;
+                    let data = slice::from_raw_parts(ptr as *const u8, total);
+                    let ret = crate::stdio_kernel::buffered_write(data);
+                    if ret < 0 {
+                        return 0;
+                    }
+                    return nmemb;
+                }
+                
+                // For other file descriptors, use direct write
                 let mut offset: libc::size_t = 0;
                 while offset < total {
                     let buf = (ptr as *const u8).add(offset) as *const c_void;

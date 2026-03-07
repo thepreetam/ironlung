@@ -14,6 +14,16 @@ x86_64 Linux
 
 I/O hot paths (`read`, `write`, `send`, `recv`) use direct syscalls with ≤1% overhead vs baseline glibc.
 
+## When to Use IronLung
+
+Use IronLung if you need lightweight UAF hardening and memory‑safe string/allocator wrappers for existing Linux binaries. Do not use it as a full libc replacement.
+
+**Performance/Security Trade-offs:**
+- **Default allocator**: Per‑thread cache (64‑byte size class) for low contention, global lock fallback
+- **UAF quarantine**: Opt‑in via `alloc‑quarantine` feature; disabled by default to avoid memory bloat and latency
+- **Stdio**: Delegates to libc's buffered I/O by default; kernel‑direct path available as optional feature
+- **Sandbox**: DNS lookups run in helper process; redesign planned for persistent daemon to reduce fork overhead
+
 ## Build
 
 ```bash
@@ -49,17 +59,18 @@ LD_PRELOAD=./target/release/libironlung.so IRONLUNG_SANDBOX_PATH=./target/releas
 
 ### Optional features
 
-| Feature | Effect |
-|--------|--------|
-| `sandbox` | getaddrinfo/freeaddrinfo run in a seccomp-contained helper process instead of delegating to libc in-process. |
-| `alloc-cache` | Per-thread free-list for one size class to reduce allocator contention (see [docs/ALLOCATOR.md](docs/ALLOCATOR.md)). |
-| `alloc-quarantine` | FIFO quarantine of freed blocks to delay reuse (UAF mitigation). **Default on.** Disable with `default-features = false` and do not add `alloc-quarantine`. |
-| `stdio-kernel` | Kernel-delegating `vprintf` (subset of specifiers, writes via `write(1, …)`); see [docs/STDIO_KERNEL.md](docs/STDIO_KERNEL.md). **Default on.** |
-| `stdio-kernel-fread-fwrite` | `fread`/`fwrite` use `fileno(stream)` + `read`/`write` syscalls (Linux). **Default on.** |
-| `stdio-libc` | Force printf/fread/fwrite to delegate to libc (turns off kernel path when set). |
-| `pthread-native` | Linux x86_64: pthread_create/join/mutex/cond via clone3+futex (no libc). See [PTHREAD_NATIVE.md](docs/PTHREAD_NATIVE.md). |
+| Feature | Effect | Performance Impact | Security Benefit |
+|--------|--------|-------------------|------------------|
+| `sandbox` | getaddrinfo/freeaddrinfo run in a seccomp-contained helper process instead of delegating to libc in-process. | High (fork+exec per call) | High (DNS isolation) |
+| `alloc-cache` | Per-thread free-list for 32‑256 byte allocations to reduce allocator contention. **Default on.** | Low (cache hit) → High (avoid global lock) | None |
+| `alloc-quarantine` | Per‑thread ring‑buffer quarantine of freed blocks to delay reuse (UAF mitigation). **Opt‑in.** Configure with `IRONLUNG_QUARANTINE_SIZE`. | Low (no global lock) → Medium (memory bloat) | High (UAF mitigation) |
+| `alloc-mimalloc` | Use mimalloc as backend allocator for high scalability. **Opt‑in.** | Very High (scalable) | None |
+| `stdio-kernel` | Kernel‑delegating `vprintf` with 4 KB buffering (subset of specifiers). **Opt‑in.** | Medium (buffered syscalls) | Medium (format validation) |
+| `stdio-kernel-fread-fwrite` | `fread`/`fwrite` use `fileno(stream)` + `read`/`write` syscalls (Linux). **Opt‑in.** | High (syscall per I/O) | Low |
+| `stdio-libc` | Force printf/fread/fwrite to delegate to libc (turns off kernel path when set). **Default on.** | Low (libc buffering) | None |
+| `hosted-test` | Enable std for hosted testing (development only). | N/A | N/A |
 
-Default build enables the kernel stdio path on Linux; CI builds with `sandbox` plus defaults.
+Default build enables `alloc‑cache` and `stdio‑libc` for best performance. Add `alloc‑quarantine` only when UAF hardening is required. Use `alloc‑mimalloc` for high‑concurrency workloads.
 
 ## Test
 
@@ -75,7 +86,7 @@ LD_PRELOAD=./target/release/libironlung.so ./victim
 
 With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 
-**Unit tests:** The main crate is no_std with `panic = "abort"`. Running `cargo test` hits duplicate-`core` / lang-item issues with `-Z build-std`, so unit tests are not run in CI. Validation is **build + victim + LD_PRELOAD** (above) and **doppelganger fuzz** (see Phase 4). The two protocol tests in `src/sandbox/protocol.rs` can be checked manually if needed.
+**Unit tests:** The main crate is no_std with `panic = "abort"`. Running `cargo test` hits duplicate-`core` / lang-item issues with `-Z build-std`. Use `cargo test --features hosted-test` for hosted functional tests. Validation is **build + victim + LD_PRELOAD** (above), **concurrent stress tests**, and **doppelganger fuzz** (see Phase 4).
 
 ## Implemented
 
@@ -91,7 +102,7 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 - **getenv** — name length limit, delegate to libc. See [docs/SUBSET.md](docs/SUBSET.md).
 
 ### Phase 1: Concurrency
-- **pthread_*** — with feature `pthread-native`: create/join/mutex/cond via clone3+futex (no libc). Otherwise delegates to libc. See [docs/PTHREAD_NATIVE.md](docs/PTHREAD_NATIVE.md).
+- **pthread_*** — delegates to system libc for thread creation and synchronization.
 - Allocator documentation and benchmarks (`docs/ALLOCATOR.md`, `tests/alloc_bench.c`)
 - Async-signal-safety audit (`docs/SIGNAL_SAFETY.md`)
 
@@ -109,8 +120,10 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 
 ### Phase 4: Validation
 - **CI (smoke):** Distro matrix (build, smoke test, ABI check, app matrix), plus doppelgänger fuzz job (best-effort).
+- **Concurrent stress tests:** New tests `tests/concurrent_alloc.c` and `tests/pthread_race.c` hammer the allocator and pthread delegation with 16+ threads.
+- **Hosted tests:** Run `cargo test --features hosted-test` for functional tests in a hosted environment.
 - **Full validation (manual):** Run `scripts/run_glibc_tests.sh [glibc_build_dir]` with a built glibc tree for conformance; run `scripts/doppelganger_fuzz.py` locally for more iterations. Optionally trigger the **Glibc validation** workflow from the Actions tab (workflow_dispatch) to run the glibc test suite in CI (best-effort, continue-on-error).
-- **1M fuzz on a VPS (for launch/graph):** On a cheap Linux VPS, build then run: `nohup ./scripts/run_fuzz_vps.sh > fuzz_out.txt 2>&1 &`. Logs `fuzz_log.csv` (iteration, crashes, timestamp) for a “1 Million Fuzz Iterations / 0 Crashes” graph. `python3 scripts/doppelganger_fuzz.py --iterations 1000000 --progress-every 10000 --csv fuzz_log.csv` does the same in the foreground.
+- **1M fuzz on a VPS (for launch/graph):** On a cheap Linux VPS, build then run: `nohup ./scripts/run_fuzz_vps.sh > fuzz_out.txt 2>&1 &`. Logs `fuzz_log.csv` (iteration, crashes, timestamp) for a "1 Million Fuzz Iterations / 0 Crashes" graph. `python3 scripts/doppelganger_fuzz.py --iterations 1000000 --progress-every 10000 --csv fuzz_log.csv` does the same in the foreground.
 - Scripts: `scripts/run_glibc_tests.sh`, `scripts/run_app_matrix.sh`, `scripts/doppelganger_fuzz.py`, `scripts/run_fuzz_vps.sh`.
 
 ## Gaps and limitations
@@ -119,7 +132,7 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 - **Glibc conformance** — Full glibc test suite runs on release (workflow fails if it fails), weekly schedule, and manual trigger; push CI does not gate on it.
 - **Kernel stdio default** — On Linux, kernel-path printf and fread/fwrite are the default; use feature `stdio-libc` to force delegate to libc.
 - **Wide char** — Minimal wchar delegation (`wcslen`, `wcscpy`, `wcsncpy`, `wcscmp`); full locale out of scope.
-- **Quarantine / UAF hardening** — v1.0 provides **memory safety** (allocator internal consistency) and **exploit mitigation** via **quarantine** (delayed reuse of freed memory) **on by default**. Use `default-features = false` and omit `alloc-quarantine` to get memory safety only. See [docs/ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md).
+- **Quarantine / UAF hardening** — v1.0 provides **memory safety** (allocator internal consistency) and optional **exploit mitigation** via **quarantine** (delayed reuse of freed memory). Quarantine is **opt‑in** via the `alloc‑quarantine` feature. Runtime size can be configured with `IRONLUNG_QUARANTINE_SIZE` (0 to disable, defaults to 512 KiB). See [docs/ALLOCATOR_QUARANTINE.md](docs/ALLOCATOR_QUARANTINE.md).
 - **Sandbox and glibc CI** — Sandbox test and Glibc validation workflow are best-effort in CI (continue-on-error); run locally or manually when needed.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for future work and delegation rules.

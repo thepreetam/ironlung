@@ -2,6 +2,7 @@
 //! Supports %% and %s only in this minimal version.
 
 use core::ffi::c_void;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use libc::c_char;
 use sc::nr::WRITE;
@@ -9,6 +10,76 @@ use sc::syscall;
 
 const OUT_MAX: usize = 4096;
 const FORMAT_MAX: usize = 4096;
+const BUFFER_SIZE: usize = 4096; // 4KB buffer
+
+// Thread-local output buffer for kernel stdio
+#[cfg(target_os = "linux")]
+static BUFFER_USED: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(target_os = "linux")]
+#[thread_local]
+static mut STDOUT_BUFFER: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
+
+/// Flush the thread-local stdout buffer
+#[cfg(target_os = "linux")]
+unsafe fn flush_stdout_buffer() -> isize {
+    let used = BUFFER_USED.load(Ordering::Relaxed);
+    if used == 0 {
+        return 0;
+    }
+    
+    let ret = syscall!(WRITE, 1usize, STDOUT_BUFFER.as_ptr() as usize, used) as isize;
+    if ret > 0 {
+        BUFFER_USED.store(0, Ordering::Relaxed);
+    }
+    ret
+}
+
+/// Flush all thread-local stdout buffers (call at exit)
+#[cfg(target_os = "linux")]
+pub unsafe fn flush_all_buffers() {
+    // Note: This is a simplified implementation
+    // In a real implementation, we would need to iterate over all threads
+    flush_stdout_buffer();
+}
+
+/// Write to stdout with buffering
+#[cfg(target_os = "linux")]
+pub unsafe fn buffered_write(data: &[u8]) -> isize {
+    let mut total_written = 0isize;
+    let mut offset = 0;
+    
+    while offset < data.len() {
+        let used = BUFFER_USED.load(Ordering::Relaxed);
+        let available = BUFFER_SIZE - used;
+        
+        if available == 0 {
+            // Buffer full, flush it
+            let ret = flush_stdout_buffer();
+            if ret < 0 {
+                return if total_written > 0 { total_written } else { ret };
+            }
+            continue;
+        }
+        
+        let to_copy = core::cmp::min(available, data.len() - offset);
+        STDOUT_BUFFER[used..used + to_copy].copy_from_slice(&data[offset..offset + to_copy]);
+        BUFFER_USED.store(used + to_copy, Ordering::Relaxed);
+        
+        offset += to_copy;
+        total_written += to_copy as isize;
+        
+        // If buffer is full or data contains newline, flush
+        if used + to_copy == BUFFER_SIZE || data[offset - 1] == b'\n' {
+            let ret = flush_stdout_buffer();
+            if ret < 0 {
+                return if total_written > 0 { total_written } else { ret };
+            }
+        }
+    }
+    
+    total_written
+}
 
 extern "C" {
     fn stdio_va_arg_s(ap: *mut c_void) -> *const c_char;
@@ -104,7 +175,12 @@ pub unsafe extern "C" fn vprintf(format: *const c_char, ap: *mut c_void) -> libc
     if i == 0 {
         return 0;
     }
+    
+    #[cfg(target_os = "linux")]
+    let ret = unsafe { buffered_write(&buf[..i]) };
+    #[cfg(not(target_os = "linux"))]
     let ret = syscall!(WRITE, 1usize, buf.as_ptr() as usize, i) as isize;
+    
     if ret < 0 {
         -1
     } else {

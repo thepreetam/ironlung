@@ -1,6 +1,8 @@
-# Native threading (clone3 / futex)
+# Native threading (clone3 / futex) - DEPRECATED
 
-When the `pthread-native` feature is enabled, IronLung implements `pthread_create`, `pthread_join`, `pthread_mutex_*`, and `pthread_cond_*` using Linux syscalls and atomics only (no delegation to libc).
+**This feature has been removed in favor of libc delegation.** The custom clone3/futex implementation added complexity and maintenance burden without significant security benefits.
+
+When the `pthread-native` feature was enabled, IronLung implemented `pthread_create`, `pthread_join`, `pthread_mutex_*`, and `pthread_cond_*` using Linux syscalls and atomics only (no delegation to libc).
 
 ## Goal
 

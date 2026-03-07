@@ -21,7 +21,7 @@ Validate inputs/sizes, then call the real implementation via `dlsym(RTLD_NEXT, .
 | Function | Notes |
 |----------|--------|
 | `fopen`, `fclose`, `fread`, `fwrite`, `fgets` | Size caps; null checks |
-| `pthread_*` | With feature `pthread-native` (Linux x86_64): create/join/mutex/cond via clone3+futex; no libc. Otherwise full delegation. |
+| `pthread_*` | Full delegation to system libc. |
 | `open`, `close`, `fork`, `execve` | Delegate after validation |
 | `socket`, `bind`, `listen`, `accept`, `connect` | Delegate |
 | `iconv_open`, `iconv`, `iconv_close` | Delegate |
@@ -45,7 +45,7 @@ Implemented in Rust; no kernel syscall for the operation itself (allocator uses 
 
 | Function | Notes |
 |----------|--------|
-| `malloc`, `free`, `realloc`, `calloc` | Talc allocator + spin mutex; mmap OOM |
+| `malloc`, `free`, `realloc`, `calloc` | Talc allocator (default) or mimalloc backend; per‑thread cache; optional quarantine; mmap OOM |
 | `memcpy`, `memmove` | Bounds and overlap checks |
 | `strcpy` | Look-ahead safe copy with heuristic limit |
 
