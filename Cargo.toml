@@ -7,14 +7,11 @@ version = "1.0.0"
 edition = "2021"
 
 [features]
-default = ["alloc-cache", "stdio-libc"]
-sandbox = []
-alloc-cache = []
+default = ["alloc-tls-cache"]
+alloc-cache = []        # Legacy C-based thread-local cache (deprecated)
+alloc-tls-cache = []    # Rust-based thread-local slab cache (recommended)
 alloc-quarantine = []   # delay reuse of freed blocks (UAF mitigation); FIFO, cap by count and bytes
 alloc-mimalloc = []     # use mimalloc as backend allocator (high scalability)
-stdio-kernel = []           # kernel-delegating vprintf (no-op on non-Linux)
-stdio-kernel-fread-fwrite = []  # fread/fwrite via fileno + read/write (no-op on non-Linux)
-stdio-libc = []             # force delegate printf/fread/fwrite to libc (disables kernel path when set)
 hosted-test = ["std"]       # Enable std for hosted testing
 
 [lib]

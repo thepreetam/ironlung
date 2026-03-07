@@ -1,8 +1,9 @@
-//! DNS and getaddrinfo: delegates to system libc via dlsym(RTLD_NEXT).
-//! With sandbox feature, routes getaddrinfo through a contained helper process.
+//! DNS and getaddrinfo: delegates to system libc via dlsym(RTLD_NEXT) with caching.
+//! Simple LRU cache avoids repeated lookups for same hostname.
 
 use core::ffi::c_void;
-use core::sync::atomic::AtomicPtr;
+use core::sync::atomic::{AtomicPtr, Ordering};
+use core::mem;
 
 use crate::cache;
 

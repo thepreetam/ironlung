@@ -41,5 +41,10 @@ fn resolve_slow(name: &[u8], holder: &AtomicPtr<c_void>) -> *mut c_void {
     }
     let fp_void = fp as *mut c_void;
     holder.store(fp_void, Ordering::Release);
+    
+    // Mark bootstrap phase as complete after first successful dlsym
+    // This ensures normal allocator is used for subsequent allocations
+    crate::bootstrap_finish();
+    
     fp_void
 }

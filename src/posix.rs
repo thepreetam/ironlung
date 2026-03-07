@@ -4,7 +4,7 @@
 use core::ffi::c_void;
 use core::sync::atomic::AtomicPtr;
 
-use sc::nr::{READ, WRITE};
+use sc::nr::{READ, WRITE, CLOCK_GETTIME, GETTIMEOFDAY};
 use sc::syscall;
 
 use crate::cache;
@@ -107,4 +107,40 @@ pub unsafe extern "C" fn execve(
     }
     let f: ExecveFn = core::mem::transmute(f);
     f(pathname, argv, envp)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn clock_gettime(clock_id: libc::clockid_t, tp: *mut libc::timespec) -> libc::c_int {
+    if tp.is_null() {
+        return -1;
+    }
+    
+    // Direct syscall implementation (kernel will use vDSO if available)
+    let ret = syscall!(CLOCK_GETTIME, clock_id as usize, tp as usize) as isize;
+    if ret < 0 {
+        errno::set_errno_from_syscall(ret);
+        return -1;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn gettimeofday(tv: *mut libc::timeval, tz: *mut libc::timezone) -> libc::c_int {
+    // tz is obsolete, always NULL in modern code
+    if !tz.is_null() {
+        // Zero out timezone struct for compatibility
+        core::ptr::write_bytes(tz, 0, 1);
+    }
+    
+    if tv.is_null() {
+        return 0; // gettimeofday returns 0 even with NULL tv
+    }
+    
+    // Direct syscall implementation (kernel will use vDSO if available)
+    let ret = syscall!(GETTIMEOFDAY, tv as usize, tz as usize) as isize;
+    if ret < 0 {
+        errno::set_errno_from_syscall(ret);
+        return -1;
+    }
+    0
 }

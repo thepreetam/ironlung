@@ -1,10 +1,10 @@
-# IronLung
+# IronLung: Rust-based Memory Hardener
 
-A no_std Rust shared object (.so) acting as a partial libc replacement via LD_PRELOAD.
+A no_std Rust shared object (.so) providing memory safety hardening for C/C++ applications via LD_PRELOAD.
 
-> "Trust No Pointer, Verify Every Byte, Delegate to the Kernel."
+> "Memory Safety Through Quarantine, Performance Through Delegation."
 
-**Status:** v1.0 — memory-safe critical subset (allocator, string ops, stdio, networking) with **UAF hardening (quarantine) on by default** for exploit mitigation. Experimental; use at your own risk. Not a full libc replacement. Hardens complex functions via process sandboxing. See [Implemented](#implemented) for coverage and [Gaps and limitations](#gaps-and-limitations) for what is out of scope or optional. No guarantee of ABI completeness, support, or compatibility with all programs. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). ABI and CI: [docs/CI_ABI.md](docs/CI_ABI.md).
+**Status:** v1.1 — Strategic pivot to memory hardening focus. UAF protection via quarantine, performance through thread-local caching, and safe delegation to system libc. Experimental; use at your own risk. Not a libc replacement—embraces delegation to system libc for complex operations. See [Implemented](#implemented) for coverage and [Gaps and limitations](#gaps-and-limitations) for what is out of scope. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). ABI and CI: [docs/CI_ABI.md](docs/CI_ABI.md).
 
 ## Target
 
@@ -16,13 +16,14 @@ I/O hot paths (`read`, `write`, `send`, `recv`) use direct syscalls with ≤1% o
 
 ## When to Use IronLung
 
-Use IronLung if you need lightweight UAF hardening and memory‑safe string/allocator wrappers for existing Linux binaries. Do not use it as a full libc replacement.
+Use IronLung if you need memory safety hardening for existing Linux binaries, particularly UAF (Use-After-Free) protection through quarantine. IronLung is a **memory hardener**, not a libc replacement—it delegates complex operations to system libc while adding safety checks and hardening.
 
-**Performance/Security Trade-offs:**
-- **Default allocator**: Per‑thread cache (64‑byte size class) for low contention, global lock fallback
-- **UAF quarantine**: Opt‑in via `alloc‑quarantine` feature; disabled by default to avoid memory bloat and latency
-- **Stdio**: Delegates to libc's buffered I/O by default; kernel‑direct path available as optional feature
-- **Sandbox**: DNS lookups run in helper process; redesign planned for persistent daemon to reduce fork overhead
+**Key Features:**
+- **UAF Protection**: Quarantine allocator delays reuse of freed memory
+- **Thread-Local Caching**: Slab allocator cache per thread reduces lock contention
+- **Memory Safety**: Bounds checking on string/memory operations
+- **Performance**: Direct syscalls for hot paths, vDSO timekeeping
+- **Delegation**: Complex operations (DNS, etc.) safely delegated to system libc
 
 ## Build
 
@@ -90,41 +91,32 @@ With IronLung, you should see `[IronLung]` prefixed on `puts` output.
 
 ## Implemented
 
-### Core (kernel-delegating)
-- **malloc** / **free** / **realloc** / **calloc** — Rust-managed heap via talc + mmap
-- **memcpy** / **memmove** — bounds and overlap checks
+### Memory Hardening Core
+- **malloc** / **free** / **realloc** / **calloc** — Rust-managed heap with UAF quarantine
+- **Thread-Local Slab Cache** — Per-thread caching for 8 size classes (16B to 2048B)
+- **Bootstrap Buffer** — Safe dlsym initialization without recursion
+- **memcpy** / **memmove** — bounds and overlap checks with size limits
 - **strcpy** — look-ahead safe copy with heuristic limit
+
+### Performance Optimizations
+- **clock_gettime** / **gettimeofday** — Direct syscalls with vDSO optimization
+- **read** / **write** / **send** / **recv** — Direct syscalls for hot paths
 - **puts** — syscall-based write with `[IronLung]` tag
 
-### String and env (validate-then-delegate)
-- **memset** / **strcmp** / **strncpy** — size-bounded, delegate to libc
-- **snprintf** — format validation (reject %n), delegate to libc
-- **getenv** — name length limit, delegate to libc. See [docs/SUBSET.md](docs/SUBSET.md).
+### Safe Delegation (validate-then-delegate)
+- **memset** / **strcmp** / **strncpy** — size-bounded, delegate to system libc
+- **snprintf** — format validation (reject %n), delegate to system libc
+- **getenv** — name length limit, delegate to system libc
+- **pthread_*** — delegates to system libc for thread creation and synchronization
+- **getaddrinfo** / **freeaddrinfo** — input validation, delegate to system libc
+- **open** / **close** / **fork** / **execve** — delegate to system libc
+- **socket** / **bind** / **listen** / **accept** / **connect** — delegate to system libc
 
-### Phase 1: Concurrency
-- **pthread_*** — delegates to system libc for thread creation and synchronization.
-- Allocator documentation and benchmarks (`docs/ALLOCATOR.md`, `tests/alloc_bench.c`)
-- Async-signal-safety audit (`docs/SIGNAL_SAFETY.md`)
-
-### Phase 2: I/O and System
-- **printf** / **vprintf** / **fprintf** — format validation, delegate to libc (optional kernel path: `stdio-kernel`)
-- **fopen** / **fclose** / **fread** / **fwrite** / **fgets** — delegate to libc (optional kernel path: `stdio-kernel-fread-fwrite`)
-- **open** / **read** / **write** / **close** / **fork** / **execve**
-- **socket** / **bind** / **listen** / **accept** / **connect** / **send** / **recv**
-
-### Phase 3: Complex Services
-- **getaddrinfo** / **freeaddrinfo**
-- **iconv_open** / **iconv** / **iconv_close**
-- **wcslen** / **wcscpy** / **wcsncpy** / **wcscmp** — minimal wchar delegate
-- **getpwnam** / **crypt**
-
-### Phase 4: Validation
-- **CI (smoke):** Distro matrix (build, smoke test, ABI check, app matrix), plus doppelgänger fuzz job (best-effort).
-- **Concurrent stress tests:** New tests `tests/concurrent_alloc.c` and `tests/pthread_race.c` hammer the allocator and pthread delegation with 16+ threads.
-- **Hosted tests:** Run `cargo test --features hosted-test` for functional tests in a hosted environment.
-- **Full validation (manual):** Run `scripts/run_glibc_tests.sh [glibc_build_dir]` with a built glibc tree for conformance; run `scripts/doppelganger_fuzz.py` locally for more iterations. Optionally trigger the **Glibc validation** workflow from the Actions tab (workflow_dispatch) to run the glibc test suite in CI (best-effort, continue-on-error).
-- **1M fuzz on a VPS (for launch/graph):** On a cheap Linux VPS, build then run: `nohup ./scripts/run_fuzz_vps.sh > fuzz_out.txt 2>&1 &`. Logs `fuzz_log.csv` (iteration, crashes, timestamp) for a "1 Million Fuzz Iterations / 0 Crashes" graph. `python3 scripts/doppelganger_fuzz.py --iterations 1000000 --progress-every 10000 --csv fuzz_log.csv` does the same in the foreground.
-- Scripts: `scripts/run_glibc_tests.sh`, `scripts/run_app_matrix.sh`, `scripts/doppelganger_fuzz.py`, `scripts/run_fuzz_vps.sh`.
+### Features
+- **alloc-tls-cache** — Thread-local slab cache (default)
+- **alloc-quarantine** — UAF protection via delayed memory reuse
+- **alloc-mimalloc** — High-performance mimalloc backend
+- **hosted-test** — Enable std for testing
 
 ## Gaps and limitations
 

@@ -1,5 +1,5 @@
-//! IronLung: A no_std Rust shared object acting as a partial libc replacement.
-//! "Trust No Pointer, Verify Every Byte, Delegate to the Kernel."
+//! IronLung: A Rust-based Memory Hardener for C/C++ applications.
+//! "Memory Safety Through Quarantine, Performance Through Delegation."
 
 #![cfg_attr(not(feature = "hosted-test"), no_std)]
 #![allow(unused_imports)]
@@ -26,16 +26,16 @@ mod locale;
 mod passwd;
 #[cfg(target_os = "linux")]
 mod string;
-#[cfg(target_os = "linux")]
-pub mod sandbox;
-#[cfg(all(feature = "stdio-kernel", not(feature = "stdio-libc"), target_os = "linux"))]
-mod stdio_kernel;
+#[cfg(all(target_os = "linux", feature = "alloc-tls-cache"))]
+mod tls_cache;
+
 
 #[cfg(feature = "hosted-test")]
 mod tests;
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::panic::PanicInfo;
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use libc::{c_void, size_t};
 use sc::nr::{MMAP, WRITE};
@@ -51,6 +51,49 @@ const MAP_PRIVATE: i32 = 0x02;
 const PROT_READ: i32 = 0x1;
 const PROT_WRITE: i32 = 0x2;
 const PAGE_SIZE: usize = 4096;
+
+/// Bootstrap static buffer for dlsym initialization safety.
+/// Prevents infinite recursion when dlsym calls malloc during early initialization.
+static mut BOOTSTRAP_BUFFER: [u8; PAGE_SIZE * 4] = [0; PAGE_SIZE * 4];
+static BOOTSTRAP_OFFSET: AtomicUsize = AtomicUsize::new(0);
+static BOOTSTRAP_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// Allocate from bootstrap buffer during early initialization.
+/// Returns null if buffer is exhausted or initialization is complete.
+unsafe fn bootstrap_alloc(size: usize, align: usize) -> *mut u8 {
+    if BOOTSTRAP_INITIALIZED.load(Ordering::Acquire) {
+        return core::ptr::null_mut();
+    }
+    
+    let mut offset = BOOTSTRAP_OFFSET.load(Ordering::Relaxed);
+    loop {
+        let aligned_offset = (offset + align - 1) & !(align - 1);
+        let new_offset = aligned_offset + size;
+        
+        if new_offset > BOOTSTRAP_BUFFER.len() {
+            return core::ptr::null_mut();
+        }
+        
+        match BOOTSTRAP_OFFSET.compare_exchange_weak(
+            offset,
+            new_offset,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => {
+                return BOOTSTRAP_BUFFER.as_mut_ptr().add(aligned_offset);
+            }
+            Err(current) => {
+                offset = current;
+            }
+        }
+    }
+}
+
+/// Mark bootstrap phase as complete - normal allocator should be used from now on.
+pub(crate) fn bootstrap_finish() {
+    BOOTSTRAP_INITIALIZED.store(true, Ordering::Release);
+}
 
 /// Bootstrap heap - talc needs initial memory for metadata.
 static mut HEAP: [u8; PAGE_SIZE * 64] = [0; PAGE_SIZE * 64];
@@ -103,12 +146,34 @@ mod alloc_backend {
     
     pub unsafe fn alloc(layout: Layout) -> *mut u8 {
         ensure_allocator_init();
+        
+        // Try TLS cache first if feature enabled
+        #[cfg(all(feature = "alloc-tls-cache", target_os = "linux"))]
+        {
+            if layout.size() <= 2048 {
+                if let Some(ptr) = crate::tls_cache::tls_alloc(layout.size()).as_mut() {
+                    return ptr;
+                }
+            }
+        }
+        
         let mut talc = GLOBAL.lock();
         talc.alloc(layout)
     }
     
     pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
         ensure_allocator_init();
+        
+        // Try TLS cache first if feature enabled
+        #[cfg(all(feature = "alloc-tls-cache", target_os = "linux"))]
+        {
+            if layout.size() <= 2048 {
+                if crate::tls_cache::tls_free(ptr, layout.size()) {
+                    return;
+                }
+            }
+        }
+        
         let mut talc = GLOBAL.lock();
         talc.dealloc(ptr, layout)
     }
@@ -213,6 +278,20 @@ pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
     if size == 0 {
         return core::ptr::null_mut();
     }
+    
+    // Try bootstrap buffer first during early initialization
+    if !BOOTSTRAP_INITIALIZED.load(Ordering::Acquire) {
+        let total = size.checked_add(MALLOC_HEADER).unwrap_or(0);
+        if total == 0 {
+            return core::ptr::null_mut();
+        }
+        let align = core::mem::align_of::<usize>();
+        if let Some(ptr) = unsafe { bootstrap_alloc(total, align).as_mut() } {
+            core::ptr::write(ptr as *mut usize, size);
+            return ptr.add(MALLOC_HEADER) as *mut c_void;
+        }
+    }
+    
     let total = size.checked_add(MALLOC_HEADER).unwrap_or(0);
     if total == 0 {
         return core::ptr::null_mut();
@@ -222,7 +301,28 @@ pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
         Err(_) => return core::ptr::null_mut(),
     };
 
-    #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
+    // Try TLS cache first (new implementation)
+    #[cfg(all(feature = "alloc-tls-cache", target_os = "linux"))]
+    {
+        if crate::tls_cache::is_tls_cacheable(size) {
+            let total = size.checked_add(MALLOC_HEADER).unwrap_or(0);
+            if total == 0 {
+                return core::ptr::null_mut();
+            }
+            let layout = match Layout::from_size_align(total, core::mem::align_of::<usize>()) {
+                Ok(l) => l,
+                Err(_) => return core::ptr::null_mut(),
+            };
+            
+            if let Some(ptr) = unsafe { crate::tls_cache::tls_alloc(layout.size()).as_mut() } {
+                core::ptr::write(ptr as *mut usize, size);
+                return ptr.add(MALLOC_HEADER) as *mut c_void;
+            }
+        }
+    }
+    
+    // Fall back to old C cache for backward compatibility
+    #[cfg(all(feature = "alloc-cache", not(feature = "alloc-tls-cache"), target_os = "linux"))]
     if is_cacheable_size(size) {
         let mut out = core::ptr::null_mut::<u8>();
         if alloc_cache_pop(&mut out) != 0 && !out.is_null() {
@@ -255,9 +355,32 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
         return;
     }
     let header_ptr = (ptr as *mut u8).sub(MALLOC_HEADER);
+    
+    // Check if pointer is within bootstrap buffer
+    let buffer_start = BOOTSTRAP_BUFFER.as_ptr() as usize;
+    let buffer_end = buffer_start + BOOTSTRAP_BUFFER.len();
+    let ptr_addr = header_ptr as usize;
+    
+    if ptr_addr >= buffer_start && ptr_addr < buffer_end {
+        // Bootstrap allocation - no-op (static buffer, never freed)
+        return;
+    }
+    
     let size = core::ptr::read(header_ptr as *const usize);
 
-    #[cfg(all(feature = "alloc-cache", target_os = "linux"))]
+    // Try TLS cache first (new implementation)
+    #[cfg(all(feature = "alloc-tls-cache", target_os = "linux"))]
+    {
+        if crate::tls_cache::is_tls_cacheable(size) {
+            let total = size.checked_add(MALLOC_HEADER).unwrap();
+            let layout = Layout::from_size_align(total, core::mem::align_of::<usize>()).unwrap();
+            unsafe { dealloc(header_ptr, layout) };
+            return;
+        }
+    }
+    
+    // Fall back to old C cache for backward compatibility
+    #[cfg(all(feature = "alloc-cache", not(feature = "alloc-tls-cache"), target_os = "linux"))]
     if is_cacheable_size(size) && alloc_cache_push_with_size(header_ptr, size) != 0 {
         return;
     }
