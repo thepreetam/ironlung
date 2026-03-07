@@ -1,7 +1,6 @@
 //! Thread-local slab cache for allocator performance.
 //! Reduces global lock contention by caching freed blocks per thread.
 
-use core::cell::UnsafeCell;
 use core::ptr;
 
 /// Maximum number of size classes supported by the cache.
@@ -62,8 +61,7 @@ impl CacheBucket {
 /// Thread-local storage for cache buckets.
 /// Uses `#[thread_local]` for zero-cost TLS access.
 #[thread_local]
-static mut TLS_CACHE: UnsafeCell<[CacheBucket; NUM_SIZE_CLASSES]> =
-    UnsafeCell::new([CacheBucket::new(); NUM_SIZE_CLASSES]);
+static mut TLS_CACHE: [CacheBucket; NUM_SIZE_CLASSES] = [CacheBucket::new(); NUM_SIZE_CLASSES];
 
 /// Find the appropriate size class index for a given allocation size.
 fn size_to_class(size: usize) -> Option<usize> {
@@ -75,11 +73,6 @@ fn size_to_class(size: usize) -> Option<usize> {
     None
 }
 
-/// Get mutable reference to thread-local cache (unsafe but safe in thread-local context).
-unsafe fn get_cache() -> &'static mut [CacheBucket; NUM_SIZE_CLASSES] {
-    &mut *TLS_CACHE.get()
-}
-
 /// Try to allocate from thread-local cache.
 /// Returns pointer if successful, null otherwise.
 pub unsafe fn tls_alloc(size: usize) -> *mut u8 {
@@ -88,8 +81,7 @@ pub unsafe fn tls_alloc(size: usize) -> *mut u8 {
         None => return ptr::null_mut(),
     };
 
-    let cache = get_cache();
-    let bucket = &mut cache[class_idx];
+    let bucket = &mut TLS_CACHE[class_idx];
     
     if !bucket.is_empty() {
         return bucket.pop();
@@ -106,8 +98,7 @@ pub unsafe fn tls_free(ptr: *mut u8, size: usize) -> bool {
         None => return false,
     };
 
-    let cache = get_cache();
-    let bucket = &mut cache[class_idx];
+    let bucket = &mut TLS_CACHE[class_idx];
     
     if bucket.is_full() {
         return false;
@@ -122,9 +113,7 @@ pub unsafe fn tls_drain_all<F>(mut dealloc_func: F)
 where
     F: FnMut(*mut u8, usize),
 {
-    let cache = get_cache();
-    
-    for (class_idx, bucket) in cache.iter_mut().enumerate() {
+    for (class_idx, bucket) in TLS_CACHE.iter_mut().enumerate() {
         let class_size = SIZE_CLASSES[class_idx];
         while !bucket.is_empty() {
             let ptr = bucket.pop();
@@ -139,11 +128,10 @@ pub fn is_tls_cacheable(size: usize) -> bool {
 }
 
 /// Get statistics about thread-local cache usage.
-pub fn tls_stats() -> TLSStats {
-    let cache = unsafe { get_cache() };
+pub unsafe fn tls_stats() -> TLSStats {
     let mut stats = TLSStats::default();
     
-    for (class_idx, bucket) in cache.iter().enumerate() {
+    for (class_idx, bucket) in TLS_CACHE.iter().enumerate() {
         stats.total_cached += bucket.len;
         stats.per_class[class_idx] = bucket.len;
     }

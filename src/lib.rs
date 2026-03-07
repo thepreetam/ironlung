@@ -233,12 +233,6 @@ static KEEP_PRINTF_SHIM: unsafe extern "C" fn() = ironlung_printf_keep;
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    // Flush stdout buffers before panic
-    #[cfg(all(feature = "stdio-kernel", not(feature = "stdio-libc"), target_os = "linux"))]
-    unsafe {
-        crate::stdio_kernel::flush_all_buffers();
-    }
-    
     unsafe {
         let msg = b"IronLung Panic: Memory Safety Violation Detected. Terminating.\n";
         let _ = syscall!(WRITE, 2i32 as usize, msg.as_ptr() as usize, msg.len());
